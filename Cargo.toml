@@ -1,0 +1,22 @@
+[package]
+name = "graupel"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT OR Apache-2.0"
+description = "Lossless compression codecs for time series, benchmarked against real weather station observations"
+repository = "https://github.com/jocarrd/graupel"
+readme = "README.md"
+keywords = ["time-series", "compression", "gorilla", "chimp", "tsdb"]
+categories = ["compression", "database-implementations", "science"]
+exclude = ["data/"]
+
+[dependencies]
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[[bin]]
+name = "graupel-bench"
+path = "src/bin/bench.rs"
