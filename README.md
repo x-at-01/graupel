@@ -1,7 +1,16 @@
 # graupel
 
+[![crates.io](https://img.shields.io/crates/v/graupel.svg)](https://crates.io/crates/graupel)
+[![docs.rs](https://img.shields.io/docsrs/graupel)](https://docs.rs/graupel)
+[![CI](https://github.com/jocarrd/graupel/actions/workflows/ci.yml/badge.svg)](https://github.com/jocarrd/graupel/actions/workflows/ci.yml)
+[![license](https://img.shields.io/crates/l/graupel.svg)](#license)
+
 Lossless time series compression codecs in Rust, measured against each other on public
 observation archives instead of on synthetic data.
+
+```sh
+cargo add graupel
+```
 
 On 467,550 real readings from three archives — weather stations, tide gauges and river gauges:
 
@@ -183,6 +192,11 @@ The benchmark verifies a lossless round trip for every series and every block be
 anything, so a number you see is a number that survived decoding.
 
 ## Using it as a library
+
+```toml
+[dependencies]
+graupel = "0.1"
+```
 
 ```rust
 use graupel::{codec::Auto, Codec, Point};
