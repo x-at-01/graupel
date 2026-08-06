@@ -172,9 +172,9 @@ mod tests {
             .map(|i| Point::new(1_700_000_000 + i * 3600, 4.2))
             .collect();
         let block = Gorilla.encode(&points).unwrap();
-        let expected_bits: usize = 32   // point count
-            + 64                 // first timestamp
-            + 64                 // first value
+        let expected_bits: usize = 16   // point count, varint, two groups
+            + 40                 // first timestamp, zigzag varint, five groups
+            + 64                 // first value, raw bit pattern
             + 21                 // second timestamp: an hourly step needs the 16-bit bucket
             + 1                  // second value, unchanged
             + 998 * 2; // steady interval and unchanged value, one bit each

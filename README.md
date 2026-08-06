@@ -105,19 +105,24 @@ two-hour blocks. Chunking the same data on epoch-aligned windows:
 ```
 block window        blocks   gorilla   decimal     chimp  chimp128       elf      auto
 --------------------------------------------------------------------------------------
-6 hours             70,003      7.88      4.73      7.52      7.02      5.42      4.70
-1 day               18,016      5.97      2.15      5.38      3.97      2.91      2.14
-1 week               2,624      5.62      1.40      4.77      2.89      2.17      1.39
-1 month                656      5.70      1.30      4.69      2.74      2.08      1.29
-1 year                 112      5.91      1.29      4.67      2.70      2.06      1.27
+6 hours             70,003      6.98      2.92      6.63      6.12      4.53      2.91
+1 day               18,016      5.74      1.69      5.15      3.74      2.67      1.68
+1 week               2,624      5.59      1.33      4.74      2.86      2.15      1.33
+1 month                656      5.69      1.28      4.68      2.73      2.07      1.28
+1 year                 112      5.91      1.28      4.66      2.70      2.05      1.27
 whole series            64      5.92      1.28      4.66      2.70      2.05      1.27
 ```
 
-The 13-byte block header dominates until roughly a week's worth of points, and small blocks
-cost far more than the choice of codec: at six-hour blocks the best codec (4.70) is worse than
-the worst codec at one-week blocks (4.77). Gorilla is the odd one out, reaching its minimum at
-one week and getting slightly worse with larger blocks, because a longer block gives its single
-reusable window more chances to be a bad fit.
+The header still dominates below about a day's worth of points, so block size remains a bigger
+lever than codec choice at the small end. It used to be far worse: storing the point count in a
+fixed 32 bits and the first timestamp in a fixed 64 wasted most of both fields, since a Unix
+timestamp needs 5 varint groups and a block count usually needs 1 or 2. Making the header
+variable-length took six-hour blocks from 4.70 to 2.91 bytes per point and one-day blocks from
+2.14 to 1.68, and cost nothing at any size.
+
+Gorilla is the odd one out, reaching its minimum at one week and getting slightly worse with
+larger blocks, because a longer block gives its single reusable window more chances to be a bad
+fit.
 
 ### Against things it does not control
 
@@ -129,9 +134,9 @@ most-downloaded Rust Gorilla) and against general-purpose compressors run over t
 format                         bytes   bytes/point     vs best
 --------------------------------------------------------------
 uncompressed                 7480800         16.00       12.6x
-graupel::auto                 594896         1.272       1.00x
-graupel::decimal              600350         1.284       1.01x
-graupel::elf                  959895         2.053       1.61x
+graupel::auto                 594197         1.271       1.00x
+graupel::decimal              599642         1.283       1.01x
+graupel::elf                  959575         2.052       1.61x
 xz -9                        1231004         2.633       2.07x
 graupel::chimp128            1261245         2.698       2.12x
 JSON + zstd -19              1368970         2.928       2.30x

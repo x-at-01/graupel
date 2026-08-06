@@ -6,7 +6,7 @@
 
 use alloc::vec::Vec;
 
-use crate::bits::BitReader;
+use crate::bits::{unzigzag, zigzag, BitReader};
 use crate::codec::{
     decode_block, encode_block, gorilla, Codec, Dod, ValueCoding, ValueDecoder, ValueEncoder,
     TAG_DECIMAL,
@@ -77,6 +77,14 @@ impl ValueCoding for ScaledInteger {
 
     fn write_header(&self, w: &mut crate::bits::BitWriter) {
         w.write_bits(self.scale as u64, 8);
+    }
+
+    fn write_first(&self, w: &mut crate::bits::BitWriter, bits: u64) {
+        w.write_varint(zigzag(bits as i64));
+    }
+
+    fn read_first(&self, r: &mut BitReader) -> Result<u64> {
+        Ok(unzigzag(r.read_varint()?) as u64)
     }
 }
 
@@ -162,6 +170,14 @@ mod tests {
         block
     }
 
+    /// Reads the scale back out of a block rather than assuming where it landed, since the
+    /// varint header ahead of it has no fixed width.
+    fn scale_of(block: &[u8]) -> u8 {
+        let mut r = BitReader::new(&block[1..]);
+        r.read_varint().unwrap();
+        r.read_bits(8).unwrap() as u8
+    }
+
     #[test]
     fn empty_and_single_point_blocks() {
         roundtrip(&[]);
@@ -175,7 +191,7 @@ mod tests {
             .collect();
         let block = roundtrip(&points);
         assert_eq!(block[0], TAG_DECIMAL);
-        assert_eq!(block[5], 1);
+        assert_eq!(scale_of(&block), 1);
     }
 
     #[test]
@@ -184,7 +200,7 @@ mod tests {
             .map(|i| Point::new(1_700_000_000 + i * 3600, (950 + i % 40) as f64))
             .collect();
         let block = roundtrip(&points);
-        assert_eq!(block[5], 0);
+        assert_eq!(scale_of(&block), 0);
     }
 
     #[test]

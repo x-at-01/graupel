@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::bits::{BitReader, BitWriter};
+use crate::bits::{unzigzag, zigzag, BitReader, BitWriter};
 use crate::error::{Error, Result};
 use crate::Point;
 
@@ -100,6 +100,17 @@ pub(crate) trait ValueCoding {
 
     /// Written after the point count, before any point. Empty for most codecs.
     fn write_header(&self, _w: &mut BitWriter) {}
+
+    /// The first value has no predecessor, so it is stored whole. XOR codecs need all 64 bits
+    /// of the pattern; codecs storing a scaled integer can use a varint instead, which is
+    /// several bytes shorter for any realistic reading.
+    fn write_first(&self, w: &mut BitWriter, bits: u64) {
+        w.write_bits(bits, 64);
+    }
+
+    fn read_first(&self, r: &mut BitReader) -> Result<u64> {
+        r.read_bits(64)
+    }
 }
 
 pub(crate) trait ValueEncoder {
@@ -121,13 +132,13 @@ pub(crate) fn encode_block<C: ValueCoding>(
         return Err(Error::TooManyPoints(points.len()));
     }
     let mut w = BitWriter::with_capacity(points.len() * 3 + 16);
-    w.write_bits(points.len() as u64, 32);
+    w.write_varint(points.len() as u64);
     coding.write_header(&mut w);
 
     if let Some(first) = points.first() {
         let bits = coding.pack(first.value);
-        w.write_bits(first.timestamp as u64, 64);
-        w.write_bits(bits, 64);
+        w.write_varint(zigzag(first.timestamp));
+        coding.write_first(&mut w, bits);
         let mut timestamps = Dod::new(first.timestamp);
         let mut values = coding.encoder(bits);
         for point in &points[1..] {
@@ -146,15 +157,15 @@ pub(crate) fn decode_block<C: ValueCoding>(
     body: &[u8],
 ) -> Result<Vec<Point>> {
     let mut r = BitReader::new(body);
-    let count = r.read_bits(32)? as usize;
+    let count = r.read_varint()? as usize;
     let coding = coding_for(&mut r)?;
 
     let mut points = Vec::with_capacity(count.min(1 << 16));
     if count == 0 {
         return Ok(points);
     }
-    let timestamp = r.read_bits(64)? as i64;
-    let bits = r.read_bits(64)?;
+    let timestamp = unzigzag(r.read_varint()?);
+    let bits = coding.read_first(&mut r)?;
     points.push(Point::new(timestamp, coding.unpack(bits)));
 
     let mut timestamps = Dod::new(timestamp);

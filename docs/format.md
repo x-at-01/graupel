@@ -47,12 +47,30 @@ discharge in whole cubic feet per second lands there on almost every point. Each
 costs one bit of prefix to the values above it and saves up to 48 bits every time one is used;
 adding them improved every codec in the benchmark.
 
+## Shared: the header
+
+Every block starts the same way:
+
+```
+varint    point count
+(codec header, if any)
+varint    first timestamp, zigzagged
+```
+
+Both are LEB128: seven payload bits per byte, high bit set while more follow. Fixed 32- and
+64-bit fields wasted most of their width — a Unix timestamp needs 5 varint groups and a typical
+block count 1 or 2 — and that waste is exactly what dominates small blocks. Zigzag maps signed
+values so small negatives stay short instead of filling all 64 bits.
+
+The first value has no predecessor, so it is stored whole. XOR codecs need all 64 bits of the
+pattern; the decimal codec stores a scaled integer, so it uses a zigzag varint there too.
+
 ## Gorilla (`0x00`)
 
 ```
-32 bits   point count, unsigned
+varint    point count
 --- if count == 0, the block ends here ---
-64 bits   first timestamp, two's complement
+varint    first timestamp, zigzagged
 64 bits   first value, raw IEEE-754 bit pattern
 --- then, for each remaining point ---
           timestamp delta-of-delta
@@ -82,11 +100,11 @@ Two details are easy to get wrong:
 ## Decimal scaling (`0x01`)
 
 ```
-32 bits   point count, unsigned
+varint    point count
  8 bits   decimal scale s, 0 to 17
 --- if count == 0, the block ends here ---
-64 bits   first timestamp, two's complement
-64 bits   first scaled value, two's complement
+varint    first timestamp, zigzagged
+varint    first scaled value, zigzagged
 --- then, for each remaining point ---
           timestamp delta-of-delta
           scaled value delta-of-delta
@@ -165,7 +183,7 @@ the benchmark where Chimp128 loses to plain Chimp.
 ## Elf (`0x04`)
 
 ```
-32 bits   point count, unsigned
+varint    point count
  8 bits   decimal places s, 0 to 17
 --- then exactly the Chimp layout, over erased values ---
 ```
