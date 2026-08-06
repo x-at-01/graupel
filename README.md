@@ -119,13 +119,49 @@ the worst codec at one-week blocks (4.77). Gorilla is the odd one out, reaching 
 one week and getting slightly worse with larger blocks, because a longer block gives its single
 reusable window more chances to be a bad fit.
 
-Every number here is produced by the benchmark on your machine. Nothing is quoted.
+### Against things it does not control
+
+Comparing a codec only against your own implementation of its rivals proves nothing — a weak
+rival might just be a weak implementation. So the same data, against the `tsz` crate (the
+most-downloaded Rust Gorilla) and against general-purpose compressors run over the raw bytes:
+
+```
+format                         bytes   bytes/point     vs best
+--------------------------------------------------------------
+uncompressed                 7480800         16.00       12.6x
+graupel::auto                 594896         1.272       1.00x
+graupel::decimal              600350         1.284       1.01x
+graupel::elf                  959895         2.053       1.61x
+xz -9                        1231004         2.633       2.07x
+graupel::chimp128            1261245         2.698       2.12x
+JSON + zstd -19              1368970         2.928       2.30x
+zstd -19                     1888815         4.040       3.18x
+JSON + gzip -9               1951470         4.174       3.28x
+gzip -9                      1999509         4.277       3.36x
+graupel::chimp               2180433         4.664       3.67x
+graupel::gorilla             2767469         5.919       4.65x
+tsz (Gorilla crate)          2788513         5.964       4.69x
+```
+
+The two rows that matter most are the last two. This crate's Gorilla and the reference crate
+land within 0.8% of each other, which is the evidence that the baseline is implemented right
+and that everything measured against it is measured fairly.
+
+The rest: the best general-purpose compressor here, `xz -9`, needs twice the space, and `zstd
+-19` over three times. Both are also far slower. Knowing the data is a series of timestamps and
+floats is worth more than any amount of generic entropy coding.
+
+Reproduce with `cargo run --release --example compare` — it verifies a lossless round trip
+through `tsz` as well, so the sizes are comparable.
+
+Every number here is produced on your machine. Nothing is quoted.
 
 ## Reproducing
 
 ```sh
-./scripts/fetch-data.sh          # ~15 MB, no account or API key anywhere
-cargo run --release --bin graupel-bench
+./scripts/fetch-data.sh                        # ~15 MB, no account or API key anywhere
+cargo run --release --bin graupel-bench        # the tables above
+cargo run --release --example compare          # against tsz, gzip, zstd, xz
 ```
 
 The script pulls from three public archives:

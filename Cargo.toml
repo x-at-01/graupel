@@ -13,6 +13,10 @@ exclude = ["data/"]
 
 [dependencies]
 
+# Only the external-comparison example needs these; the library itself has no dependencies.
+[dev-dependencies]
+tsz = "0.1"
+
 [features]
 default = ["std"]
 # The codecs need only `alloc`; `std` adds the error trait and the benchmark binary.
