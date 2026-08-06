@@ -1,9 +1,7 @@
-//! Reader for NOAA ISD-Lite, the hourly surface observation archive used by the benchmark.
+//! Reader for NOAA ISD-Lite hourly surface observations.
 //!
-//! The format is worth knowing before reading any result: NOAA already stores temperature,
-//! dew point, pressure and wind speed as tenths, so the underlying quantities have one
-//! decimal digit of precision. That is exactly the shape real station data has, and exactly
-//! the shape the decimal codec is built to exploit.
+//! NOAA stores temperature, dew point, pressure and wind speed as tenths, so those series
+//! carry one decimal digit of precision — the shape the decimal codec is built to exploit.
 //!
 //! <https://www.ncei.noaa.gov/pub/data/noaa/isd-lite/>
 
@@ -57,9 +55,8 @@ pub struct Series {
     pub points: Vec<Point>,
 }
 
-/// Splits one ISD-Lite file into one series per variable. Rows flagged `-9999` are dropped
-/// rather than interpolated, so the gaps a real station leaves behind survive into the
-/// benchmark instead of being smoothed away.
+/// Rows flagged `-9999` are dropped rather than interpolated, so a real station's gaps reach
+/// the benchmark instead of being smoothed away.
 pub fn parse(text: &str) -> Vec<Series> {
     let mut series: Vec<Series> = VARIABLES
         .iter()
@@ -97,8 +94,7 @@ fn to_epoch(year: i64, month: u32, day: u32, hour: i64) -> i64 {
     days_from_civil(year, month, day) * 86_400 + hour * 3_600
 }
 
-/// Howard Hinnant's civil-date algorithm, which avoids pulling in a date crate for what is
-/// ultimately a handful of integer operations.
+/// Howard Hinnant's civil-date algorithm, so the crate needs no date dependency.
 fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
     let era = if year >= 0 { year } else { year - 399 } / 400;

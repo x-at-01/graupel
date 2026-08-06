@@ -1,5 +1,5 @@
-//! Lossless compression codecs for time series, built to be compared against each other
-//! on real weather station observations rather than on synthetic benchmarks.
+//! Lossless time series compression codecs, measured against each other on real weather
+//! station observations. See `docs/format.md` for the block formats.
 //!
 //! ```
 //! use graupel::{codec::Gorilla, Codec, Point};
@@ -34,8 +34,7 @@ impl Point {
     }
 }
 
-/// Compares values by their bit pattern so that round-trip tests can assert on NaN payloads
-/// and on the difference between `0.0` and `-0.0`, which `==` deliberately hides.
+/// Bit-pattern equality, because `==` hides NaN payloads and the sign of zero.
 impl PartialEq for Point {
     fn eq(&self, other: &Self) -> bool {
         self.timestamp == other.timestamp && self.value.to_bits() == other.value.to_bits()

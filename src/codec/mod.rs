@@ -3,17 +3,20 @@ use crate::error::{Error, Result};
 use crate::Point;
 
 mod chimp;
+mod chimp128;
 mod decimal;
 mod dod;
 mod gorilla;
 
 pub use chimp::Chimp;
+pub use chimp128::Chimp128;
 pub use decimal::Decimal;
 pub use gorilla::Gorilla;
 
 pub const TAG_GORILLA: u8 = 0;
 pub const TAG_DECIMAL: u8 = 1;
 pub const TAG_CHIMP: u8 = 2;
+pub const TAG_CHIMP128: u8 = 3;
 
 pub trait Codec {
     fn name(&self) -> &'static str;
@@ -21,24 +24,28 @@ pub trait Codec {
     fn encode(&self, points: &[Point]) -> Result<Vec<u8>>;
 }
 
-/// Decodes any block regardless of which codec produced it: the leading tag byte says which
-/// one it was, so a stored block stays readable without tracking that separately.
+/// The leading tag byte names the codec, so a stored block stays readable without tracking
+/// that separately.
 pub fn decode(block: &[u8]) -> Result<Vec<Point>> {
     let (&tag, body) = block.split_first().ok_or(Error::UnexpectedEnd)?;
     match tag {
         TAG_GORILLA => gorilla::decode(body),
         TAG_DECIMAL => decimal::decode(body),
         TAG_CHIMP => chimp::decode(body),
+        TAG_CHIMP128 => chimp128::decode(body),
         other => Err(Error::UnknownEncoding(other)),
     }
 }
 
 pub fn all() -> Vec<Box<dyn Codec>> {
-    vec![Box::new(Gorilla), Box::new(Decimal), Box::new(Chimp)]
+    vec![
+        Box::new(Gorilla),
+        Box::new(Decimal),
+        Box::new(Chimp),
+        Box::new(Chimp128),
+    ]
 }
 
-/// Running delta-of-delta state, used for timestamps by every codec and for scaled integer
-/// values by the decimal codec.
 pub(crate) struct Dod {
     prev: i64,
     delta: i64,

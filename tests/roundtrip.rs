@@ -1,6 +1,4 @@
-//! Every codec has to be lossless for every input, so the interesting test is not one shape
-//! of data but many: whatever the generator produces, all three must agree with each other
-//! and with what went in.
+//! Whatever the generator produces, every codec must return exactly what went in.
 
 use graupel::codec::all;
 use graupel::{decode, Point};

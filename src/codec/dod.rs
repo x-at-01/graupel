@@ -1,9 +1,6 @@
-//! Delta-of-delta encoding, shared by every codec for timestamps and by the decimal codec
-//! for values as well.
+//! Delta-of-delta, shared by every codec for timestamps and by the decimal codec for values.
 //!
-//! A regular sampling interval makes the second derivative zero, which costs a single bit.
-//! Buckets widen as the deviation grows, and the widest one is 64 bits so that a stream can
-//! survive arbitrary gaps without a special case.
+//! The widest bucket is 64 bits so an arbitrary gap never needs a special case.
 
 use crate::bits::{fits_in, sign_extend, BitReader, BitWriter};
 use crate::error::Result;

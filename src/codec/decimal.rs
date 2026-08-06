@@ -1,12 +1,8 @@
-//! Decimal scaling, the trick VictoriaMetrics uses to beat Gorilla on real metrics.
+//! Decimal scaling, the approach VictoriaMetrics documented for beating Gorilla on real
+//! metrics: rescale the block to exact integers, then delta-of-delta those.
 //!
-//! XOR compression assumes consecutive values share most of their binary representation, but
-//! a reading like 12.3 °C is a decimal quantity that IEEE-754 stores as an awkward binary
-//! fraction. Multiplying the block by the smallest 10^s that turns every value into an exact
-//! integer recovers the structure, and integers respond far better to delta-of-delta.
-//!
-//! The scale is a property of the whole block, so unlike Gorilla and Chimp this codec has to
-//! see every value before it can emit anything.
+//! The scale is a block-level property, so this codec cannot stream — it has to see every
+//! value before it can emit anything.
 
 use crate::bits::BitReader;
 use crate::codec::{finish_block, gorilla, read_count, start_block, Codec, Dod, TAG_DECIMAL};
@@ -20,8 +16,8 @@ const POW10: [f64; 18] = [
     1e17,
 ];
 
-/// Above 2^53 an f64 can no longer represent every integer, so a scaled value beyond it could
-/// not be reconstructed.
+/// Above 2^53 an f64 stops representing every integer, so a scaled value beyond it could not
+/// be reconstructed.
 const MAX_EXACT: f64 = 9_007_199_254_740_992.0;
 
 pub struct Decimal;
@@ -84,8 +80,7 @@ pub(crate) fn decode(body: &[u8]) -> Result<Vec<Point>> {
     Ok(points)
 }
 
-/// Smallest scale that makes every value in the block an exactly representable integer, or
-/// `None` when the block has to fall back to Gorilla.
+/// `None` means the block has to fall back to Gorilla.
 fn block_scale(points: &[Point]) -> Option<u8> {
     (0..=MAX_SCALE).find(|&scale| {
         let factor = POW10[scale as usize];
@@ -94,8 +89,7 @@ fn block_scale(points: &[Point]) -> Option<u8> {
 }
 
 fn scaled(value: f64, factor: f64) -> Option<i64> {
-    // Negative zero would come back as +0.0 once it has been through an integer, and callers
-    // that compare bit patterns would see the difference.
+    // Negative zero comes back as +0.0 once it has been through an integer.
     if value == 0.0 && value.is_sign_negative() {
         return None;
     }

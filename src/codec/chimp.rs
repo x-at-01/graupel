@@ -1,24 +1,15 @@
 //! Chimp, from "Chimp: Efficient Lossless Floating Point Compression for Time Series
-//! Databases" (VLDB 2022).
-//!
-//! Two observations drive it. Gorilla spends 5 bits on an exact leading-zero count, but
-//! rounding that count down to one of eight buckets costs 3 bits and loses almost nothing.
-//! And Gorilla's reuse-the-previous-window branch often stores a window far wider than the
-//! value needs, so Chimp instead pays for an explicit trailing-zero count whenever there are
-//! enough of them to earn it back.
-//!
-//! This is Chimp, not Chimp128: the reference value is always the immediately preceding one
-//! rather than the best of a 128-value window. See issue #1.
+//! Databases" (VLDB 2022). For the windowed variant see [`super::chimp128`].
 
 use crate::bits::{BitReader, BitWriter};
 use crate::codec::{finish_block, read_count, start_block, Codec, Dod, TAG_CHIMP};
 use crate::error::{Error, Result};
 use crate::Point;
 
-const LEADING_ROUND: [u32; 8] = [0, 8, 12, 16, 18, 20, 22, 24];
+pub(crate) const LEADING_ROUND: [u32; 8] = [0, 8, 12, 16, 18, 20, 22, 24];
 
 #[rustfmt::skip]
-const LEADING_INDEX: [u8; 64] = [
+pub(crate) const LEADING_INDEX: [u8; 64] = [
     0, 0, 0, 0, 0, 0, 0, 0,
     1, 1, 1, 1, 2, 2, 2, 2,
     3, 3, 4, 4, 5, 5, 6, 6,
@@ -29,8 +20,7 @@ const LEADING_INDEX: [u8; 64] = [
     7, 7, 7, 7, 7, 7, 7, 7,
 ];
 
-/// Storing an explicit trailing-zero count costs 9 extra bits, so it only pays off once the
-/// window it saves is wider than that.
+/// An explicit trailing-zero count costs 9 extra bits, so it only pays off beyond this many.
 const TRAILING_THRESHOLD: u32 = 6;
 
 const NO_WINDOW: u32 = u32::MAX;
@@ -110,8 +100,7 @@ impl ChimpWriter {
             w.write_bits(index as u64, 3);
             w.write_bits(width as u64, 6);
             w.write_bits(xor >> trailing, width);
-            // The window just written is narrower than the one a '10' would imply, so it must
-            // not become the reference for the next value.
+            // This window is narrower than a '10' would imply, so it cannot be the reference.
             self.leading = NO_WINDOW;
         } else if leading == self.leading {
             w.write_bits(0b10, 2);

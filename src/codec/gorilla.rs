@@ -1,15 +1,13 @@
 //! Gorilla, from "Gorilla: A Fast, Scalable, In-Memory Time Series Database" (VLDB 2015).
-//!
-//! Values are XORed against the previous one and only the window of bits that actually
-//! changed is stored. This is the baseline every other codec here is measured against.
+//! The baseline every other codec here is measured against.
 
 use crate::bits::{BitReader, BitWriter};
 use crate::codec::{finish_block, read_count, start_block, Codec, Dod, TAG_GORILLA};
 use crate::error::{Error, Result};
 use crate::Point;
 
-/// The paper spends 5 bits on the leading-zero count, so counts above 31 are clamped.
-/// The extra zeros then travel inside the significant-bit window, which stays lossless.
+/// The leading-zero field is 5 bits, so higher counts clamp and the extra zeros ride along
+/// inside the significant-bit window.
 const MAX_LEADING: u32 = 31;
 
 const NO_WINDOW: u32 = u32::MAX;
@@ -94,8 +92,8 @@ impl XorWriter {
             w.write_bit(true);
             w.write_bits(leading as u64, 5);
             let width = 64 - leading - trailing;
-            // The width field is 6 bits wide but the range is 1..=64, so a full 64-bit window
-            // is stored as 0. Width can never actually be zero here because xor != 0.
+            // Width ranges 1..=64 in a 6-bit field, so 64 wraps to 0. Zero cannot occur
+            // because xor != 0 here.
             w.write_bits((width & 0x3F) as u64, 6);
             w.write_bits(xor >> trailing, width);
             self.leading = leading;

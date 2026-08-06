@@ -32,7 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # The benchmark verifies a lossless round trip for every series, so running it on real
-      # data is a correctness check and not only a performance report.
+      # The benchmark asserts a lossless round trip per series, so this is a correctness gate.
       - run: ./scripts/fetch-data.sh
       - run: cargo run --release --bin graupel-bench

@@ -46,10 +46,7 @@ value has to be rejected.
 
 ## Good first issues
 
-- **Chimp128.** The published variant picks the best reference from a 128-value window rather
-  than always using the previous value. It should close most of the remaining gap to decimal
-  scaling on data that has no short decimal form.
-- **Per-block codec selection.** The encoder could try all three and keep the smallest, since
+- **Per-block codec selection.** The encoder could try all four and keep the smallest, since
   the tag byte already makes blocks self-describing. Worth knowing what the ceiling is.
 - **More datasets.** ISD-Lite is one shape of data. Solar irradiance, tide gauges, air
   quality and grid frequency all behave differently, and a codec that only wins on one of them
