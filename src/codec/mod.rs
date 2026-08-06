@@ -1,13 +1,19 @@
+use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::bits::{BitReader, BitWriter};
 use crate::error::{Error, Result};
 use crate::Point;
 
+mod auto;
 mod chimp;
 mod chimp128;
 mod decimal;
 mod dod;
 mod gorilla;
 
+pub use auto::Auto;
 pub use chimp::Chimp;
 pub use chimp128::Chimp128;
 pub use decimal::Decimal;
@@ -43,6 +49,7 @@ pub fn all() -> Vec<Box<dyn Codec>> {
         Box::new(Decimal),
         Box::new(Chimp),
         Box::new(Chimp128),
+        Box::new(Auto),
     ]
 }
 

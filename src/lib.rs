@@ -1,6 +1,9 @@
 //! Lossless time series compression codecs, measured against each other on real weather
 //! station observations. See `docs/format.md` for the block formats.
 //!
+//! The codecs allocate nothing beyond the output buffer, so the crate builds without `std`:
+//! `default-features = false` leaves everything except the error trait and the benchmark.
+//!
 //! ```
 //! use graupel::{codec::Gorilla, Codec, Point};
 //!
@@ -12,6 +15,10 @@
 //! let block = Gorilla.encode(&points).unwrap();
 //! assert_eq!(graupel::decode(&block).unwrap(), points);
 //! ```
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
 
 pub mod bits;
 pub mod codec;
@@ -43,3 +50,32 @@ impl PartialEq for Point {
 
 /// Bytes a point occupies uncompressed: an `i64` timestamp plus an `f64` value.
 pub const RAW_POINT_BYTES: usize = 16;
+
+/// Splits a series into the blocks a real database would store, cutting on fixed epoch-aligned
+/// windows rather than on a point count, which is what Prometheus and friends do.
+///
+/// A window of zero or less yields the whole series as one block.
+pub fn chunk_by_window(points: &[Point], window_seconds: i64) -> alloc::vec::Vec<&[Point]> {
+    use alloc::vec::Vec;
+
+    if points.is_empty() {
+        return Vec::new();
+    }
+    if window_seconds <= 0 {
+        return alloc::vec![points];
+    }
+
+    let mut blocks = Vec::new();
+    let mut start = 0;
+    let mut current = points[0].timestamp.div_euclid(window_seconds);
+    for (index, point) in points.iter().enumerate() {
+        let window = point.timestamp.div_euclid(window_seconds);
+        if window != current {
+            blocks.push(&points[start..index]);
+            start = index;
+            current = window;
+        }
+    }
+    blocks.push(&points[start..]);
+    blocks
+}

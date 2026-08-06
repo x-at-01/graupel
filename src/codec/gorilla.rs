@@ -1,6 +1,8 @@
 //! Gorilla, from "Gorilla: A Fast, Scalable, In-Memory Time Series Database" (VLDB 2015).
 //! The baseline every other codec here is measured against.
 
+use alloc::vec::Vec;
+
 use crate::bits::{BitReader, BitWriter};
 use crate::codec::{finish_block, read_count, start_block, Codec, Dod, TAG_GORILLA};
 use crate::error::{Error, Result};

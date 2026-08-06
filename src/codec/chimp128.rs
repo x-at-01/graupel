@@ -6,6 +6,9 @@
 //!
 //! Bit layout follows <https://github.com/panagiotisl/chimp>.
 
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::bits::{BitReader, BitWriter};
 use crate::codec::chimp::{LEADING_INDEX, LEADING_ROUND};
 use crate::codec::{finish_block, read_count, start_block, Codec, Dod, TAG_CHIMP128};

@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use crate::error::{Error, Result};
 
 pub struct BitWriter {

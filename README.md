@@ -1,94 +1,132 @@
 # graupel
 
-Four lossless time series compression codecs in Rust, measured against each other on real
-weather station observations.
+Lossless time series compression codecs in Rust, measured against each other on public
+observation archives instead of on synthetic data.
 
-The interesting result is not that any of them is new — none is — but by how much the choice
-matters. On 373,118 hourly readings from ten NOAA stations:
+On 467,550 real readings from three archives — weather stations, tide gauges and river gauges:
 
 | codec | bytes/point | vs uncompressed |
 |---|---|---|
-| Gorilla (VLDB 2015) | 6.05 | 2.6x |
-| Chimp (VLDB 2022) | 4.65 | 3.4x |
-| Chimp128 (VLDB 2022) | 2.81 | 5.7x |
-| Decimal scaling | **1.44** | **11.1x** |
+| Gorilla (VLDB 2015) | 6.06 | 2.6x |
+| Chimp (VLDB 2022) | 4.80 | 3.3x |
+| Chimp128 (VLDB 2022) | 2.84 | 5.6x |
+| Decimal scaling | 2.01 | 8.0x |
+| **Best-of-four per block** | **1.62** | **9.9x** |
 
-Gorilla is the algorithm most time series databases still ship, and the one whose paper
-reports 1.37 bytes per point. On this data it manages 6.05. That gap is the whole point of
-the repository.
+The headline is not any single row. It is that **no codec wins everywhere**, and the gap
+between the best and worst choice for a given series is often larger than the gap between
+codecs on average.
 
-## Why the gap
+## Why the choice matters more than the codec
 
 Gorilla XORs each value against the previous one and stores only the window of bits that
-changed. It assumes consecutive values share most of their binary representation.
+changed. Its paper reports 1.37 bytes per point. On this data it manages 6.06.
 
-A station reporting 12.3 °C is not producing a binary quantity. IEEE-754 stores 12.3 as a
-long, awkward fraction, and 12.4 as a different long awkward fraction. Two readings a tenth
-of a degree apart can differ across most of the mantissa, so the window Gorilla has to store
-stays wide.
+The reason is that a station reporting 12.3 °C is not producing a binary quantity. IEEE-754
+stores 12.3 as a long awkward fraction and 12.4 as a different long awkward fraction, so two
+readings a tenth of a degree apart differ across most of the mantissa and the window stays
+wide. Multiplying a block by the smallest power of ten that makes every value an exact integer
+undoes that, which is the trick
+[VictoriaMetrics documented](https://faun.pub/victoriametrics-achieving-better-compression-for-time-series-data-than-gorilla-317bc1f95932).
 
-Multiplying the whole block by the smallest power of ten that turns every value into an exact
-integer undoes the damage. 12.3 and 12.4 become 123 and 124, and integers respond to
-delta-of-delta the way the paper always promised. This is the trick
-[VictoriaMetrics documented](https://faun.pub/victoriametrics-achieving-better-compression-for-time-series-data-than-gorilla-317bc1f95932),
-and the numbers above are an independent check of their claim on data they did not choose.
+But that only helps when the quantity really is short in decimal. River discharge is reported
+as whole cubic feet per second in the tens of thousands, and there decimal scaling is the
+**worst** of the four — worse than plain Gorilla. Tide gauges report millimetres, three decimal
+digits, and decimal scaling loses to Chimp128 there too.
 
-Chimp attacks the same problem from the other side: it keeps the XOR but spends its bits more
-carefully, rounding the leading-zero count into eight buckets and paying for an explicit
-trailing-zero count only when that earns its keep. Chimp128 goes further and XORs against the
-best of the last 128 values instead of always the previous one. Both get there without
-assuming anything about decimal precision, which matters for values that genuinely have no
-short decimal form.
+Chimp attacks the same problem without assuming anything about decimals: it keeps the XOR but
+rounds the leading-zero count into eight buckets and pays for an explicit trailing-zero count
+only when that earns its keep. Chimp128 goes further and XORs against the best of the last 128
+values rather than always the previous one.
+
+Since blocks carry a tag byte naming their codec, an encoder can simply try all four and keep
+the smallest. That is the `auto` row, and on this data it beats every fixed choice.
 
 ## Results
 
 ```
-variable                    points     raw   gorilla   decimal     chimp  chimp128
-----------------------------------------------------------------------------------
-air_temperature             79,807      16      7.19      1.35      5.56      2.84
-dew_point                   79,772      16      7.01      1.35      5.43      2.63
-sea_level_pressure          72,857      16      6.74      1.44      5.46      2.85
-wind_direction              69,384      16      2.38      1.79      2.46      3.34
-wind_speed                  71,298      16      6.59      1.31      4.05      2.42
+source     variable                 points   raw   gorilla   decimal     chimp  chimp128      auto
+--------------------------------------------------------------------------------------------------
+co-ops     water_level              29,760    16      7.81      6.30      6.76      4.38      3.66
+co-ops     water_level_sigma        29,760    16      6.83      1.18      6.17      1.80      1.18
+isd-lite   air_temperature          79,807    16      7.19      1.35      5.56      2.84      1.35
+isd-lite   dew_point                79,772    16      7.01      1.35      5.43      2.63      1.35
+isd-lite   sea_level_pressure       72,857    16      6.74      1.44      5.46      2.85      1.44
+isd-lite   wind_direction           69,384    16      2.38      1.79      2.46      3.34      1.79
+isd-lite   wind_speed               71,298    16      6.59      1.31      4.05      2.42      1.31
+usgs-nwis  discharge                17,452    16      2.44      4.85      2.15      3.02      1.90
+usgs-nwis  gage_height              17,460    16      5.49      5.44      5.09      2.36      2.36
 
 codec        bytes/point    vs raw        encode        decode
 --------------------------------------------------------------
-gorilla            6.054      2.6x    34 Mpt/s     37 Mpt/s
-decimal            1.443     11.1x    35 Mpt/s     44 Mpt/s
-chimp              4.649      3.4x    26 Mpt/s     31 Mpt/s
-chimp128           2.811      5.7x    27 Mpt/s     30 Mpt/s
+gorilla            6.059      2.6x    48 Mpt/s     50 Mpt/s
+decimal            2.012      8.0x    55 Mpt/s     74 Mpt/s
+chimp              4.804      3.3x    39 Mpt/s     39 Mpt/s
+chimp128           2.838      5.6x    40 Mpt/s     39 Mpt/s
+auto               1.618      9.9x    11 Mpt/s     72 Mpt/s
 ```
 
-Wind direction is the one variable that inverts every ranking, and the reason is the same in
-each case: NOAA reports it in whole degrees. Decimal scaling has nothing to undo, so its lead
-mostly evaporates. The series jumps discontinuously, so Chimp loses to Gorilla. And a whole
-number has all-zero low mantissa bits, so every reading collides on the same key in Chimp128's
-lookup table, the reference degenerates to the previous value, and it pays 7 bits a point to
-name it — the only variable where Chimp128 comes out worse than plain Chimp.
+Three things in that table are worth more than the averages.
 
-Two takeaways survive that. The trick that wins depends on how the numbers were rounded before
-they were ever stored, and an average over variables would have hidden all of it.
+**Decimal scaling wins five series and loses three.** It is best on tenths and on small
+three-decimal values, and worst of all four on whole-number discharge.
 
-Every number above is produced by the benchmark on your own machine. Nothing is quoted.
+**Chimp128 loses to plain Chimp on exactly one variable, wind direction.** Its lookup table is
+keyed on the low mantissa bits, whole numbers have those all zero, so every reading collides on
+the same key, the reference degenerates to the previous value, and the 7-bit index buys
+nothing. NOAA reports wind direction in whole degrees.
+
+**Trying all four costs 4.5x in encode time and nothing at decode.** Encoding runs at 11 Mpt/s
+instead of 55, but decoding is unchanged because the tag byte makes the block self-describing.
+
+### Block size
+
+Everything above stores one block per series, which no real database does. Prometheus uses
+two-hour blocks. Chunking the same data on epoch-aligned windows:
+
+```
+block window        blocks   gorilla   decimal     chimp  chimp128      auto
+----------------------------------------------------------------------------
+6 hours             70,003      8.74      5.81      8.39      7.89      5.70
+1 day               18,016      6.27      2.85      5.68      4.27      2.64
+1 week               2,624      5.79      2.04      4.93      3.05      1.74
+1 month                656      5.85      1.99      4.83      2.89      1.64
+1 year                 112      6.05      2.01      4.81      2.84      1.62
+whole series            64      6.06      2.01      4.80      2.84      1.62
+```
+
+The 13-byte block header dominates until roughly a week's worth of points, and small blocks
+cost far more than the choice of codec: at six-hour blocks the best codec is worse than the
+worst codec at one-week blocks. Gorilla is the odd one out, reaching its minimum at one week
+and getting slightly worse with larger blocks, because a longer block gives its single reusable
+window more chances to be a bad fit.
+
+Every number here is produced by the benchmark on your machine. Nothing is quoted.
 
 ## Reproducing
 
 ```sh
-./scripts/fetch-data.sh          # ~10 MB from NOAA, no account or API key
+./scripts/fetch-data.sh          # ~15 MB, no account or API key anywhere
 cargo run --release --bin graupel-bench
 ```
 
-`fetch-data.sh` pulls a year of hourly observations from NOAA's ISD-Lite archive for ten
-stations chosen to span climates, from Singapore's near-constant equatorial temperatures to
-Albuquerque's high desert swings. `YEAR=2019 ./scripts/fetch-data.sh` picks a different year.
+The script pulls from three public archives:
 
-The benchmark verifies a lossless round trip for every series before reporting anything, so a
-result you see is a result that survived decoding.
+| source | cadence | precision | shape |
+|---|---|---|---|
+| [NOAA ISD-Lite](https://www.ncei.noaa.gov/pub/data/noaa/isd-lite/) | hourly | tenths | ten stations spanning climates |
+| [NOAA CO-OPS](https://api.tidesandcurrents.noaa.gov/api/prod/datagetter) | 6 minutes | thousandths | four tide gauges, smooth and periodic |
+| [USGS NWIS](https://waterservices.usgs.gov/nwis/iv/) | 15 minutes | whole and hundredths | four river gauges, spiky |
+
+`YEAR=2019 ./scripts/fetch-data.sh` picks a different year.
+
+The benchmark verifies a lossless round trip for every series and every block before reporting
+anything, so a number you see is a number that survived decoding.
 
 ## Using it as a library
 
 ```rust
-use graupel::{codec::Decimal, Codec, Point};
+use graupel::{codec::Auto, Codec, Point};
 
 let readings = vec![
     Point::new(1_672_531_200, 8.2),
@@ -96,57 +134,59 @@ let readings = vec![
     Point::new(1_672_538_400, 7.9),
 ];
 
-let block = Decimal.encode(&readings)?;
+let block = Auto.encode(&readings)?;
 let restored = graupel::decode(&block)?;
 
 assert_eq!(restored, readings);
 ```
 
-Blocks carry a one-byte tag naming the codec that wrote them, so `decode` handles any block
-without being told which one it was. That also lets the decimal codec fall back to Gorilla
-transparently when a block contains a value with no exact decimal form — a NaN, an infinity,
-or something like π — rather than losing precision to force the scaling through.
+`decode` handles any block without being told which codec wrote it. That is also what lets the
+decimal codec fall back to Gorilla when a block holds a value with no exact decimal form — a
+NaN, an infinity, or something like π — instead of losing precision to force the scaling
+through.
 
-No dependencies, `Cargo.toml` included.
+No dependencies. Builds without `std`:
+
+```toml
+graupel = { version = "0.1", default-features = false }
+```
 
 ## What this is not
 
-- **Not a time series database.** There is no storage engine, no index, no query layer. If
-  you want one in Rust, [tsink](https://github.com/cantrepro/tsink) is active and well ahead.
+- **Not a time series database.** No storage engine, no index, no query layer. If you want one
+  in Rust, [tsink](https://github.com/cantrepro/tsink) is active and well ahead.
 - **Not new algorithms.** Gorilla is from 2015, Chimp from 2022, decimal scaling is
-  VictoriaMetrics' documented approach. The contribution here is the comparison and the
-  measurement harness, not the ideas.
-- **Not production-hardened.** It is correct as far as the test suite reaches, which includes
-  randomised round trips, adjacent float bit patterns, and bit-flip corruption of every block,
-  but it has not run anywhere real.
+  VictoriaMetrics' documented approach. The contribution is the comparison and the harness.
+- **Not production-hardened.** Correct as far as the test suite reaches — randomised round
+  trips, adjacent float bit patterns, truncation at every byte offset, bit-flip corruption of
+  every block — but it has not run anywhere real.
 
 ## Layout
 
 ```
-src/bits.rs           bit-level reader and writer
-src/codec/dod.rs      delta-of-delta, shared by all three codecs
-src/codec/gorilla.rs  XOR with a reusable significant-bit window
-src/codec/decimal.rs  decimal scaling with a Gorilla fallback
-src/codec/chimp.rs    bucketed leading zeros and explicit trailing zeros
-src/codec/chimp128.rs the same, XORed against the best of the last 128 values
-src/dataset.rs        NOAA ISD-Lite parser
-src/bin/bench.rs      the harness that produces the tables above
-docs/format.md        bit-level specification of all three block formats
+src/bits.rs             bit-level reader and writer
+src/codec/dod.rs        delta-of-delta, shared by every codec
+src/codec/gorilla.rs    XOR with a reusable significant-bit window
+src/codec/decimal.rs    decimal scaling with a Gorilla fallback
+src/codec/chimp.rs      bucketed leading zeros, explicit trailing zeros
+src/codec/chimp128.rs   the same, XORed against the best of the last 128 values
+src/codec/auto.rs       encode with all four, keep the smallest
+src/dataset/            parsers for the three archives
+src/bin/bench.rs        the harness that produces the tables above
+docs/format.md          bit-level specification of every block format
 ```
 
 ## Contributing
 
-Contributions are welcome, and several of the most interesting pieces are deliberately
-unfinished. See [CONTRIBUTING.md](CONTRIBUTING.md) for what needs doing and how results are
-expected to be reported — briefly: a change that claims to compress better has to show the
-benchmark output before and after.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Briefly: a change that claims to compress better has to
+show the benchmark output before and after, and a codec that compresses better by losing a bit
+pattern is not a smaller codec, it is a different one.
 
 ## References
 
 - Pelkonen et al., [Gorilla: A Fast, Scalable, In-Memory Time Series Database](https://www.vldb.org/pvldb/vol8/p1816-teller.pdf), VLDB 2015
 - Liakos et al., [Chimp: Efficient Lossless Floating Point Compression for Time Series Databases](https://www.vldb.org/pvldb/vol15/p3058-liakos.pdf), VLDB 2022, and its [reference implementation](https://github.com/panagiotisl/chimp)
 - Valyala, [VictoriaMetrics: achieving better compression than Gorilla](https://faun.pub/victoriametrics-achieving-better-compression-for-time-series-data-than-gorilla-317bc1f95932)
-- NOAA, [Integrated Surface Database (ISD-Lite)](https://www.ncei.noaa.gov/products/land-based-station/integrated-surface-database)
 
 ## License
 

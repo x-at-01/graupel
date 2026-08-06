@@ -46,18 +46,16 @@ value has to be rejected.
 
 ## Good first issues
 
-- **Per-block codec selection.** The encoder could try all four and keep the smallest, since
-  the tag byte already makes blocks self-describing. Worth knowing what the ceiling is.
-- **More datasets.** ISD-Lite is one shape of data. Solar irradiance, tide gauges, air
-  quality and grid frequency all behave differently, and a codec that only wins on one of them
-  is worth knowing about.
-- **Elf or Elf+.** More recent floating-point codecs that erase trailing mantissa bits before
-  XORing. They are lossless in the sense that matters here only under specific conditions —
-  establishing which is part of the work.
-- **Block sizing.** Everything is currently one block per series. Real databases chunk by
-  time window, which changes the amortisation of the per-block header and the reachability of
-  a single decimal scale.
-- **`no_std` support.** The codecs need no allocation beyond the output buffer.
+- **More datasets.** Three archives is not many, and every one added so far changed a
+  conclusion. Grid frequency, solar irradiance and air quality all behave differently again.
+  Keep the no-account rule: if reproducing the benchmark needs an API key, it is not
+  reproducible.
+- **A cheaper `auto`.** Trying all four costs 4.5x in encode time. A classifier that looks at
+  the first few points — decimal digits, integrality, magnitude — should pick the right codec
+  most of the time for almost nothing.
+- **Per-variable block sizing.** The block-size table is aggregated across sources with very
+  different cadences. Six-minute tide data and hourly weather almost certainly want different
+  windows.
 
 ## Scope
 

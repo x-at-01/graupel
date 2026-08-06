@@ -1,7 +1,7 @@
 //! Whatever the generator produces, every codec must return exactly what went in.
 
 use graupel::codec::all;
-use graupel::{decode, Point};
+use graupel::{chunk_by_window, decode, Point};
 
 struct Xorshift(u64);
 
@@ -103,6 +103,40 @@ fn truncating_a_block_anywhere_never_panics() {
         let block = codec.encode(&points).unwrap();
         for cut in 0..block.len() {
             let _ = decode(&block[..cut]);
+        }
+    }
+}
+
+#[test]
+fn chunking_preserves_every_point_in_order() {
+    let mut rng = Xorshift(0x5EED_1234);
+    let points: Vec<Point> = (0..1000)
+        .map(|i| {
+            let gap = if rng.below(10) == 0 { 7 * 3_600 } else { 3_600 };
+            Point::new(1_600_000_000 + i * gap, rng.below(1000) as f64 / 10.0)
+        })
+        .collect();
+
+    for window in [0, 1, 3_600, 86_400, 7 * 86_400, i64::MAX] {
+        let blocks = chunk_by_window(&points, window);
+        let rejoined: Vec<Point> = blocks.iter().flat_map(|b| b.iter().copied()).collect();
+        assert_eq!(rejoined, points, "window {window} lost or reordered points");
+        assert!(
+            blocks.iter().all(|b| !b.is_empty()),
+            "window {window} produced an empty block"
+        );
+    }
+    assert!(chunk_by_window(&[], 3_600).is_empty());
+}
+
+#[test]
+fn every_chunk_of_every_window_roundtrips() {
+    let points: Vec<Point> = (0..2000)
+        .map(|i| Point::new(1_600_000_000 + i * 3_600, 5.0 + (i % 97) as f64 / 10.0))
+        .collect();
+    for window in [3_600, 86_400, 30 * 86_400] {
+        for (n, block) in chunk_by_window(&points, window).iter().enumerate() {
+            assert_all_codecs_roundtrip(block, &format!("window {window} block {n}"));
         }
     }
 }

@@ -13,6 +13,11 @@ exclude = ["data/"]
 
 [dependencies]
 
+[features]
+default = ["std"]
+# The codecs need only `alloc`; `std` adds the error trait and the benchmark binary.
+std = []
+
 [profile.release]
 lto = true
 codegen-units = 1
@@ -20,3 +25,4 @@ codegen-units = 1
 [[bin]]
 name = "graupel-bench"
 path = "src/bin/bench.rs"
+required-features = ["std"]

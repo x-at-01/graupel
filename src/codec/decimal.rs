@@ -4,6 +4,8 @@
 //! The scale is a block-level property, so this codec cannot stream — it has to see every
 //! value before it can emit anything.
 
+use alloc::vec::Vec;
+
 use crate::bits::BitReader;
 use crate::codec::{finish_block, gorilla, read_count, start_block, Codec, Dod, TAG_DECIMAL};
 use crate::error::{Error, Result};
@@ -94,13 +96,16 @@ fn scaled(value: f64, factor: f64) -> Option<i64> {
         return None;
     }
     let scaled = value * factor;
-    if !scaled.is_finite() || scaled.fract() != 0.0 || scaled.abs() > MAX_EXACT {
+    if !scaled.is_finite() || scaled.abs() > MAX_EXACT {
         return None;
     }
-    if scaled / factor != value {
+    // `f64::fract` needs std; truncating and comparing is the same integrality test and keeps
+    // the crate buildable without it.
+    let truncated = scaled as i64;
+    if truncated as f64 != scaled || scaled / factor != value {
         return None;
     }
-    Some(scaled as i64)
+    Some(truncated)
 }
 
 #[cfg(test)]

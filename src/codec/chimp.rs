@@ -1,6 +1,8 @@
 //! Chimp, from "Chimp: Efficient Lossless Floating Point Compression for Time Series
 //! Databases" (VLDB 2022). For the windowed variant see [`super::chimp128`].
 
+use alloc::vec::Vec;
+
 use crate::bits::{BitReader, BitWriter};
 use crate::codec::{finish_block, read_count, start_block, Codec, Dod, TAG_CHIMP};
 use crate::error::{Error, Result};

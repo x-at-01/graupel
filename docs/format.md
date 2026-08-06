@@ -11,8 +11,10 @@ length because the point count tells it when to stop.
 | `0x02` | Chimp |
 | `0x03` | Chimp128 |
 
-The tag is what lets a stored block be decoded without recording which codec produced it, and
-what lets the decimal codec emit a Gorilla block when scaling is not possible.
+The tag is what lets a stored block be decoded without recording which codec produced it. It is
+also what makes two things possible without any format of their own: the decimal codec emits a
+Gorilla block when scaling would lose precision, and `Auto` encodes with all four and keeps the
+smallest, whichever that turns out to be.
 
 ## Shared: delta-of-delta
 
