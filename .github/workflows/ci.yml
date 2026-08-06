@@ -8,6 +8,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Kept to two jobs on purpose. Every extra job is another chance for GitHub to fail to resolve
+# its own actions, which shows up as a red badge that has nothing to do with the code.
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,25 +18,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: thumbv7em-none-eabihf
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --release
-
-  msrv:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: build without std
+        run: cargo build --no-default-features --target thumbv7em-none-eabihf
       - uses: dtolnay/rust-toolchain@1.74.0
-      - run: cargo build
-
-  no_std:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: thumbv7em-none-eabihf
-      - run: cargo build --no-default-features --target thumbv7em-none-eabihf
+      - name: build on the minimum supported Rust version
+        run: cargo build
 
   benchmark:
     runs-on: ubuntu-latest
