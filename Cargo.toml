@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.74"
 license = "MIT OR Apache-2.0"
-description = "Lossless compression codecs for time series, benchmarked against real weather station observations"
+description = "Lossless time series compression: Gorilla, Chimp, Chimp128, Elf and decimal scaling, measured on real observation archives"
 repository = "https://github.com/jocarrd/graupel"
 readme = "README.md"
 keywords = ["time-series", "compression", "gorilla", "chimp", "tsdb"]
+documentation = "https://docs.rs/graupel"
 categories = ["compression", "database-implementations", "science"]
 exclude = ["data/"]
 
