@@ -11,7 +11,9 @@ use alloc::vec::Vec;
 
 use crate::bits::{BitReader, BitWriter};
 use crate::codec::chimp::{LEADING_INDEX, LEADING_ROUND};
-use crate::codec::{finish_block, read_count, start_block, Codec, Dod, TAG_CHIMP128};
+use crate::codec::{
+    decode_block, encode_block, Codec, ValueCoding, ValueDecoder, ValueEncoder, TAG_CHIMP128,
+};
 use crate::error::{Error, Result};
 use crate::Point;
 
@@ -36,43 +38,38 @@ impl Codec for Chimp128 {
     }
 
     fn encode(&self, points: &[Point]) -> Result<Vec<u8>> {
-        let (head, mut w) = start_block(TAG_CHIMP128, points)?;
-        if let Some(first) = points.first() {
-            w.write_bits(first.timestamp as u64, 64);
-            w.write_bits(first.value.to_bits(), 64);
-            let mut timestamps = Dod::new(first.timestamp);
-            let mut values = Chimp128Writer::new(first.value.to_bits());
-            for point in &points[1..] {
-                timestamps.write(&mut w, point.timestamp);
-                values.write(&mut w, point.value.to_bits());
-            }
-        }
-        Ok(finish_block(head, w))
+        encode_block(TAG_CHIMP128, &WindowedXor, points)
+    }
+}
+
+struct WindowedXor;
+
+impl ValueCoding for WindowedXor {
+    type Encoder = Chimp128Writer;
+    type Decoder = Chimp128Reader;
+
+    fn pack(&self, value: f64) -> u64 {
+        value.to_bits()
+    }
+
+    fn unpack(&self, bits: u64) -> f64 {
+        f64::from_bits(bits)
+    }
+
+    fn encoder(&self, first: u64) -> Chimp128Writer {
+        Chimp128Writer::new(first)
+    }
+
+    fn decoder(&self, first: u64) -> Chimp128Reader {
+        Chimp128Reader::new(first)
     }
 }
 
 pub(crate) fn decode(body: &[u8]) -> Result<Vec<Point>> {
-    let mut r = BitReader::new(body);
-    let count = read_count(&mut r)?;
-    let mut points = Vec::with_capacity(count);
-    if count == 0 {
-        return Ok(points);
-    }
-    let timestamp = r.read_bits(64)? as i64;
-    let bits = r.read_bits(64)?;
-    points.push(Point::new(timestamp, f64::from_bits(bits)));
-
-    let mut timestamps = Dod::new(timestamp);
-    let mut values = Chimp128Reader::new(bits);
-    for _ in 1..count {
-        let timestamp = timestamps.read(&mut r)?;
-        let bits = values.read(&mut r)?;
-        points.push(Point::new(timestamp, f64::from_bits(bits)));
-    }
-    Ok(points)
+    decode_block(|_| Ok(WindowedXor), body)
 }
 
-struct Chimp128Writer {
+pub(crate) struct Chimp128Writer {
     stored: [u64; WINDOW],
     /// Low `KEY_BITS` of a value to the sequence number that last held it.
     recent: Box<[u32; TABLE_LEN]>,
@@ -82,7 +79,7 @@ struct Chimp128Writer {
 }
 
 impl Chimp128Writer {
-    fn new(first: u64) -> Self {
+    pub(crate) fn new(first: u64) -> Self {
         let mut writer = Chimp128Writer {
             stored: [0; WINDOW],
             recent: Box::new([0; TABLE_LEN]),
@@ -94,7 +91,9 @@ impl Chimp128Writer {
         writer.recent[(first & KEY_MASK) as usize] = 0;
         writer
     }
+}
 
+impl ValueEncoder for Chimp128Writer {
     fn write(&mut self, w: &mut BitWriter, bits: u64) {
         let key = (bits & KEY_MASK) as usize;
         let candidate = self.recent[key];
@@ -148,14 +147,14 @@ impl Chimp128Writer {
     }
 }
 
-struct Chimp128Reader {
+pub(crate) struct Chimp128Reader {
     stored: [u64; WINDOW],
     current: usize,
     leading: u32,
 }
 
 impl Chimp128Reader {
-    fn new(first: u64) -> Self {
+    pub(crate) fn new(first: u64) -> Self {
         let mut reader = Chimp128Reader {
             stored: [0; WINDOW],
             current: 0,
@@ -164,7 +163,9 @@ impl Chimp128Reader {
         reader.stored[0] = first;
         reader
     }
+}
 
+impl ValueDecoder for Chimp128Reader {
     fn read(&mut self, r: &mut BitReader) -> Result<u64> {
         let value = match r.read_bits(2)? {
             0b00 => {

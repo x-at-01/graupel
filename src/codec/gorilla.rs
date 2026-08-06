@@ -4,7 +4,9 @@
 use alloc::vec::Vec;
 
 use crate::bits::{BitReader, BitWriter};
-use crate::codec::{finish_block, read_count, start_block, Codec, Dod, TAG_GORILLA};
+use crate::codec::{
+    decode_block, encode_block, Codec, ValueCoding, ValueDecoder, ValueEncoder, TAG_GORILLA,
+};
 use crate::error::{Error, Result};
 use crate::Point;
 
@@ -22,40 +24,35 @@ impl Codec for Gorilla {
     }
 
     fn encode(&self, points: &[Point]) -> Result<Vec<u8>> {
-        let (head, mut w) = start_block(TAG_GORILLA, points)?;
-        if let Some(first) = points.first() {
-            w.write_bits(first.timestamp as u64, 64);
-            w.write_bits(first.value.to_bits(), 64);
-            let mut timestamps = Dod::new(first.timestamp);
-            let mut values = XorWriter::new(first.value.to_bits());
-            for point in &points[1..] {
-                timestamps.write(&mut w, point.timestamp);
-                values.write(&mut w, point.value.to_bits());
-            }
-        }
-        Ok(finish_block(head, w))
+        encode_block(TAG_GORILLA, &RawXor, points)
+    }
+}
+
+struct RawXor;
+
+impl ValueCoding for RawXor {
+    type Encoder = XorWriter;
+    type Decoder = XorReader;
+
+    fn pack(&self, value: f64) -> u64 {
+        value.to_bits()
+    }
+
+    fn unpack(&self, bits: u64) -> f64 {
+        f64::from_bits(bits)
+    }
+
+    fn encoder(&self, first: u64) -> XorWriter {
+        XorWriter::new(first)
+    }
+
+    fn decoder(&self, first: u64) -> XorReader {
+        XorReader::new(first)
     }
 }
 
 pub(crate) fn decode(body: &[u8]) -> Result<Vec<Point>> {
-    let mut r = BitReader::new(body);
-    let count = read_count(&mut r)?;
-    let mut points = Vec::with_capacity(count);
-    if count == 0 {
-        return Ok(points);
-    }
-    let timestamp = r.read_bits(64)? as i64;
-    let bits = r.read_bits(64)?;
-    points.push(Point::new(timestamp, f64::from_bits(bits)));
-
-    let mut timestamps = Dod::new(timestamp);
-    let mut values = XorReader::new(bits);
-    for _ in 1..count {
-        let timestamp = timestamps.read(&mut r)?;
-        let bits = values.read(&mut r)?;
-        points.push(Point::new(timestamp, f64::from_bits(bits)));
-    }
-    Ok(points)
+    decode_block(|_| Ok(RawXor), body)
 }
 
 struct XorWriter {
@@ -72,7 +69,9 @@ impl XorWriter {
             trailing: 0,
         }
     }
+}
 
+impl ValueEncoder for XorWriter {
     fn write(&mut self, w: &mut BitWriter, bits: u64) {
         let xor = self.prev ^ bits;
         self.prev = bits;
@@ -118,7 +117,9 @@ impl XorReader {
             trailing: 0,
         }
     }
+}
 
+impl ValueDecoder for XorReader {
     fn read(&mut self, r: &mut BitReader) -> Result<u64> {
         if !r.read_bit()? {
             return Ok(self.prev);
@@ -174,7 +175,7 @@ mod tests {
         let expected_bits: usize = 32   // point count
             + 64                 // first timestamp
             + 64                 // first value
-            + 68                 // second timestamp: an hourly step overflows every narrow bucket
+            + 21                 // second timestamp: an hourly step needs the 16-bit bucket
             + 1                  // second value, unchanged
             + 998 * 2; // steady interval and unchanged value, one bit each
         assert_eq!(block.len(), 1 + expected_bits.div_ceil(8));

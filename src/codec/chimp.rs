@@ -4,7 +4,9 @@
 use alloc::vec::Vec;
 
 use crate::bits::{BitReader, BitWriter};
-use crate::codec::{finish_block, read_count, start_block, Codec, Dod, TAG_CHIMP};
+use crate::codec::{
+    decode_block, encode_block, Codec, ValueCoding, ValueDecoder, ValueEncoder, TAG_CHIMP,
+};
 use crate::error::{Error, Result};
 use crate::Point;
 
@@ -35,55 +37,52 @@ impl Codec for Chimp {
     }
 
     fn encode(&self, points: &[Point]) -> Result<Vec<u8>> {
-        let (head, mut w) = start_block(TAG_CHIMP, points)?;
-        if let Some(first) = points.first() {
-            w.write_bits(first.timestamp as u64, 64);
-            w.write_bits(first.value.to_bits(), 64);
-            let mut timestamps = Dod::new(first.timestamp);
-            let mut values = ChimpWriter::new(first.value.to_bits());
-            for point in &points[1..] {
-                timestamps.write(&mut w, point.timestamp);
-                values.write(&mut w, point.value.to_bits());
-            }
-        }
-        Ok(finish_block(head, w))
+        encode_block(TAG_CHIMP, &BucketedXor, points)
+    }
+}
+
+pub(crate) struct BucketedXor;
+
+impl ValueCoding for BucketedXor {
+    type Encoder = ChimpWriter;
+    type Decoder = ChimpReader;
+
+    fn pack(&self, value: f64) -> u64 {
+        value.to_bits()
+    }
+
+    fn unpack(&self, bits: u64) -> f64 {
+        f64::from_bits(bits)
+    }
+
+    fn encoder(&self, first: u64) -> ChimpWriter {
+        ChimpWriter::new(first)
+    }
+
+    fn decoder(&self, first: u64) -> ChimpReader {
+        ChimpReader::new(first)
     }
 }
 
 pub(crate) fn decode(body: &[u8]) -> Result<Vec<Point>> {
-    let mut r = BitReader::new(body);
-    let count = read_count(&mut r)?;
-    let mut points = Vec::with_capacity(count);
-    if count == 0 {
-        return Ok(points);
-    }
-    let timestamp = r.read_bits(64)? as i64;
-    let bits = r.read_bits(64)?;
-    points.push(Point::new(timestamp, f64::from_bits(bits)));
-
-    let mut timestamps = Dod::new(timestamp);
-    let mut values = ChimpReader::new(bits);
-    for _ in 1..count {
-        let timestamp = timestamps.read(&mut r)?;
-        let bits = values.read(&mut r)?;
-        points.push(Point::new(timestamp, f64::from_bits(bits)));
-    }
-    Ok(points)
+    decode_block(|_| Ok(BucketedXor), body)
 }
 
-struct ChimpWriter {
+pub(crate) struct ChimpWriter {
     prev: u64,
     leading: u32,
 }
 
 impl ChimpWriter {
-    fn new(first: u64) -> Self {
+    pub(crate) fn new(first: u64) -> Self {
         ChimpWriter {
             prev: first,
             leading: NO_WINDOW,
         }
     }
+}
 
+impl ValueEncoder for ChimpWriter {
     fn write(&mut self, w: &mut BitWriter, bits: u64) {
         let xor = self.prev ^ bits;
         self.prev = bits;
@@ -116,19 +115,21 @@ impl ChimpWriter {
     }
 }
 
-struct ChimpReader {
+pub(crate) struct ChimpReader {
     prev: u64,
     leading: u32,
 }
 
 impl ChimpReader {
-    fn new(first: u64) -> Self {
+    pub(crate) fn new(first: u64) -> Self {
         ChimpReader {
             prev: first,
             leading: NO_WINDOW,
         }
     }
+}
 
+impl ValueDecoder for ChimpReader {
     fn read(&mut self, r: &mut BitReader) -> Result<u64> {
         let xor = match r.read_bits(2)? {
             0b00 => 0,

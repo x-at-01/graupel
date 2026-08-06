@@ -10,6 +10,7 @@ length because the point count tells it when to stop.
 | `0x01` | Decimal scaling |
 | `0x02` | Chimp |
 | `0x03` | Chimp128 |
+| `0x04` | Elf |
 
 The tag is what lets a stored block be decoded without recording which codec produced it. It is
 also what makes two things possible without any format of their own: the decimal codec emits a
@@ -28,13 +29,23 @@ second point, at a cost of one wide bucket per block.
 |---|---|---|
 | `0` | none | exactly 0 |
 | `10` | 7 bits, two's complement | -64 to 63 |
-| `110` | 9 bits, two's complement | -256 to 255 |
-| `1110` | 12 bits, two's complement | -2048 to 2047 |
-| `1111` | 64 bits, two's complement | anything |
+| `110` | 9 bits | -256 to 255 |
+| `1110` | 12 bits | -2048 to 2047 |
+| `11110` | 16 bits | -32768 to 32767 |
+| `111110` | 20 bits | ±2^19 |
+| `1111110` | 24 bits | ±2^23 |
+| `11111110` | 32 bits | ±2^31 |
+| `11111111` | 64 bits | anything |
 
 The ranges are the natural two's complement ones rather than the off-by-one ranges printed in
-the Gorilla paper. A steady sampling interval therefore costs exactly one bit per point, and
-an arbitrary gap always fits, so a series with missing readings needs no special handling.
+the Gorilla paper. A steady sampling interval costs exactly one bit per point, and an arbitrary
+gap always fits, so a series with missing readings needs no special handling.
+
+The buckets past 12 bits are not in the paper, which escapes straight to 64. That cliff is
+expensive for any series whose second derivative routinely needs 13 to 32 bits — river
+discharge in whole cubic feet per second lands there on almost every point. Each added bucket
+costs one bit of prefix to the values above it and saves up to 48 bits every time one is used;
+adding them improved every codec in the benchmark.
 
 ## Gorilla (`0x00`)
 
@@ -84,11 +95,19 @@ Two details are easy to get wrong:
 The encoder picks the smallest `s` in 0 to 17 such that every value `v` in the block satisfies
 all of:
 
-- `v * 10^s` is finite and has no fractional part
-- `|v * 10^s| <= 2^53`, above which an f64 can no longer hold every integer
-- `(v * 10^s) / 10^s == v`, the round trip actually returning the original bit pattern
+- `v * 10^s` is finite and `|v * 10^s| <= 2^53`, above which an f64 can no longer hold every
+  integer
+- rounding `v * 10^s` to the nearest integer and dividing back by `10^s` reproduces `v`'s exact
+  bit pattern
 - `v` is not negative zero, which would come back as positive zero after passing through an
   integer
+
+The second condition is the one that is easy to get wrong. Testing whether `v * 10^s` is an
+integer instead — the obvious reading of "exactly representable" — rejects a scale of 2 for
+8.55, because `8.55 * 100` is `855.0000000000001` in binary floating point. The search then
+climbs to 15, where the products are large enough to have left the range where f64 arithmetic
+is exact. Rounding to the nearest integer and checking the round trip accepts 2, which is both
+correct and four orders of magnitude smaller to encode.
 
 If no such `s` exists, the encoder emits a Gorilla block instead. One awkward value is enough
 to disqualify the whole block, which is the price of the scale being a block-level property.
@@ -142,6 +161,29 @@ The failure mode is worth stating plainly: a whole number has all-zero low manti
 every whole number collides on key zero. The lookup then returns the previous value and the
 7-bit index buys nothing. This is measurable — it is why wind direction is the one variable in
 the benchmark where Chimp128 loses to plain Chimp.
+
+## Elf (`0x04`)
+
+```
+32 bits   point count, unsigned
+ 8 bits   decimal places s, 0 to 17
+--- then exactly the Chimp layout, over erased values ---
+```
+
+Before encoding, each value has as many low mantissa bits zeroed as survive the round trip:
+the widest `w` such that rounding `(v with w low bits cleared)` back to `s` decimal places
+reproduces `v`'s exact bit pattern. Zeroing bits widens the trailing-zero runs the XOR encoder
+is looking for, and the rounding on the way out puts the original value back.
+
+The search runs from 52 bits downwards and returns the first width that survives, so it always
+finds the widest one; leaving the value untouched is the safe fallback. Blocks with no valid
+`s` at all are emitted as plain Chimp instead.
+
+Elf sits on Chimp rather than Chimp128 for a measured reason. Chimp128 keys its reference table
+on the low 14 mantissa bits, which are exactly the bits erasing sets to zero, so every erased
+value collides on key zero, the reference degenerates to the previous value, and the 7-bit index
+is paid for nothing. Layered on Chimp128 the combination is measurably worse than Chimp128
+alone.
 
 ## Robustness
 

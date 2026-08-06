@@ -7,13 +7,16 @@
 use alloc::vec::Vec;
 
 use crate::bits::BitReader;
-use crate::codec::{finish_block, gorilla, read_count, start_block, Codec, Dod, TAG_DECIMAL};
+use crate::codec::{
+    decode_block, encode_block, gorilla, Codec, Dod, ValueCoding, ValueDecoder, ValueEncoder,
+    TAG_DECIMAL,
+};
 use crate::error::{Error, Result};
 use crate::Point;
 
-const MAX_SCALE: u8 = 17;
+pub(crate) const MAX_SCALE: u8 = 17;
 
-const POW10: [f64; 18] = [
+pub(crate) const POW10: [f64; 18] = [
     1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
     1e17,
 ];
@@ -30,67 +33,104 @@ impl Codec for Decimal {
     }
 
     fn encode(&self, points: &[Point]) -> Result<Vec<u8>> {
-        let Some(scale) = block_scale(points) else {
-            return gorilla::Gorilla.encode(points);
-        };
-        let factor = POW10[scale as usize];
-
-        let (head, mut w) = start_block(TAG_DECIMAL, points)?;
-        w.write_bits(scale as u64, 8);
-        if let Some(first) = points.first() {
-            let first_value = scaled(first.value, factor).expect("scale was validated");
-            w.write_bits(first.timestamp as u64, 64);
-            w.write_bits(first_value as u64, 64);
-            let mut timestamps = Dod::new(first.timestamp);
-            let mut values = Dod::new(first_value);
-            for point in &points[1..] {
-                timestamps.write(&mut w, point.timestamp);
-                values.write(
-                    &mut w,
-                    scaled(point.value, factor).expect("scale was validated"),
-                );
-            }
+        match block_scale(points) {
+            Some(scale) => encode_block(TAG_DECIMAL, &ScaledInteger::new(scale), points),
+            None => gorilla::Gorilla.encode(points),
         }
-        Ok(finish_block(head, w))
+    }
+}
+
+/// Values travel as integers scaled by a power of ten, then through delta-of-delta.
+struct ScaledInteger {
+    scale: u8,
+    factor: f64,
+}
+
+impl ScaledInteger {
+    fn new(scale: u8) -> Self {
+        ScaledInteger {
+            scale,
+            factor: POW10[scale as usize],
+        }
+    }
+}
+
+impl ValueCoding for ScaledInteger {
+    type Encoder = IntegerDelta;
+    type Decoder = IntegerDelta;
+
+    fn pack(&self, value: f64) -> u64 {
+        scaled(value, self.factor).expect("block scale was validated over every value") as u64
+    }
+
+    fn unpack(&self, bits: u64) -> f64 {
+        bits as i64 as f64 / self.factor
+    }
+
+    fn encoder(&self, first: u64) -> IntegerDelta {
+        IntegerDelta(Dod::new(first as i64))
+    }
+
+    fn decoder(&self, first: u64) -> IntegerDelta {
+        IntegerDelta(Dod::new(first as i64))
+    }
+
+    fn write_header(&self, w: &mut crate::bits::BitWriter) {
+        w.write_bits(self.scale as u64, 8);
+    }
+}
+
+struct IntegerDelta(Dod);
+
+impl ValueEncoder for IntegerDelta {
+    fn write(&mut self, w: &mut crate::bits::BitWriter, bits: u64) {
+        self.0.write(w, bits as i64);
+    }
+}
+
+impl ValueDecoder for IntegerDelta {
+    fn read(&mut self, r: &mut BitReader) -> Result<u64> {
+        Ok(self.0.read(r)? as u64)
     }
 }
 
 pub(crate) fn decode(body: &[u8]) -> Result<Vec<Point>> {
-    let mut r = BitReader::new(body);
-    let count = read_count(&mut r)?;
-    let scale = r.read_bits(8)? as usize;
-    if scale >= POW10.len() {
-        return Err(Error::MalformedBlock);
-    }
-    let factor = POW10[scale];
+    decode_block(
+        |r| {
+            let scale = r.read_bits(8)? as usize;
+            if scale >= POW10.len() {
+                return Err(Error::MalformedBlock);
+            }
+            Ok(ScaledInteger::new(scale as u8))
+        },
+        body,
+    )
+}
 
-    let mut points = Vec::with_capacity(count);
-    if count == 0 {
-        return Ok(points);
+/// Rounds to the nearest integer without `f64::round`, which lives in std. Taking the
+/// difference against the truncation stays exact right up to 2^53, where adding 0.5 first would
+/// already have been swallowed by the gap between representable values.
+pub(crate) fn round_nearest(value: f64) -> i64 {
+    let truncated = value as i64;
+    let fraction = value - truncated as f64;
+    if fraction >= 0.5 {
+        truncated + 1
+    } else if fraction <= -0.5 {
+        truncated - 1
+    } else {
+        truncated
     }
-    let timestamp = r.read_bits(64)? as i64;
-    let value = r.read_bits(64)? as i64;
-    points.push(Point::new(timestamp, value as f64 / factor));
-
-    let mut timestamps = Dod::new(timestamp);
-    let mut values = Dod::new(value);
-    for _ in 1..count {
-        let timestamp = timestamps.read(&mut r)?;
-        let value = values.read(&mut r)?;
-        points.push(Point::new(timestamp, value as f64 / factor));
-    }
-    Ok(points)
 }
 
 /// `None` means the block has to fall back to Gorilla.
-fn block_scale(points: &[Point]) -> Option<u8> {
+pub(crate) fn block_scale(points: &[Point]) -> Option<u8> {
     (0..=MAX_SCALE).find(|&scale| {
         let factor = POW10[scale as usize];
         points.iter().all(|p| scaled(p.value, factor).is_some())
     })
 }
 
-fn scaled(value: f64, factor: f64) -> Option<i64> {
+pub(crate) fn scaled(value: f64, factor: f64) -> Option<i64> {
     // Negative zero comes back as +0.0 once it has been through an integer.
     if value == 0.0 && value.is_sign_negative() {
         return None;
@@ -99,13 +139,16 @@ fn scaled(value: f64, factor: f64) -> Option<i64> {
     if !scaled.is_finite() || scaled.abs() > MAX_EXACT {
         return None;
     }
-    // `f64::fract` needs std; truncating and comparing is the same integrality test and keeps
-    // the crate buildable without it.
-    let truncated = scaled as i64;
-    if truncated as f64 != scaled || scaled / factor != value {
+    // The test that matters is whether the round trip reproduces the exact bit pattern, not
+    // whether the multiplication landed on an integer. 8.55 * 100 is 855.0000000000001, but 855
+    // divided by 100 is 8.55 to the bit, so the reading needs a scale of 2 rather than the 15 an
+    // integrality test would demand — and scales that large push the arithmetic into the range
+    // above 2^53 where it stops being exact at all.
+    let rounded = round_nearest(scaled);
+    if (rounded as f64 / factor).to_bits() != value.to_bits() {
         return None;
     }
-    Some(truncated)
+    Some(rounded)
 }
 
 #[cfg(test)]

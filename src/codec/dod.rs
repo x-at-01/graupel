@@ -5,7 +5,13 @@
 use crate::bits::{fits_in, sign_extend, BitReader, BitWriter};
 use crate::error::Result;
 
-const BUCKETS: [u32; 3] = [7, 9, 12];
+/// The original paper stops at 12 bits and then jumps straight to a full 64-bit escape, which
+/// is ruinous for series whose second derivative routinely needs 13 to 32 bits — river
+/// discharge in whole cubic feet per second, for instance. The extra buckets cost one bit of
+/// prefix each to the rare wide values and save up to 48 bits every time one lands.
+const BUCKETS: [u32; 7] = [7, 9, 12, 16, 20, 24, 32];
+
+const ESCAPE: u32 = BUCKETS.len() as u32 + 1;
 
 pub fn write(w: &mut BitWriter, dod: i64) {
     if dod == 0 {
@@ -20,23 +26,23 @@ pub fn write(w: &mut BitWriter, dod: i64) {
             return;
         }
     }
-    w.write_bits(u64::MAX, 4);
+    w.write_bits(u64::MAX, ESCAPE);
     w.write_bits(dod as u64, 64);
 }
 
 pub fn read(r: &mut BitReader) -> Result<i64> {
     let mut leading_ones = 0u32;
-    while leading_ones < 4 && r.read_bit()? {
+    while leading_ones < ESCAPE && r.read_bit()? {
         leading_ones += 1;
     }
-    match leading_ones {
-        0 => Ok(0),
-        4 => Ok(r.read_bits(64)? as i64),
-        n => {
-            let width = BUCKETS[n as usize - 1];
-            Ok(sign_extend(r.read_bits(width)?, width))
-        }
+    if leading_ones == 0 {
+        return Ok(0);
     }
+    if leading_ones == ESCAPE {
+        return Ok(r.read_bits(64)? as i64);
+    }
+    let width = BUCKETS[leading_ones as usize - 1];
+    Ok(sign_extend(r.read_bits(width)?, width))
 }
 
 #[cfg(test)]
@@ -45,34 +51,18 @@ mod tests {
 
     #[test]
     fn every_bucket_boundary_survives_a_roundtrip() {
-        let values = [
-            0,
-            1,
-            -1,
-            63,
-            -64,
-            64,
-            -65,
-            255,
-            -256,
-            256,
-            -257,
-            2047,
-            -2048,
-            2048,
-            -2049,
-            i64::MAX,
-            i64::MIN,
-            86_400,
-            -86_400,
-        ];
+        let mut values = alloc::vec![0i64, 1, -1, i64::MAX, i64::MIN, 86_400, -86_400];
+        for width in [7u32, 9, 12, 16, 20, 24, 32, 40] {
+            let limit = 1i64 << (width - 1);
+            values.extend([limit - 1, limit, -limit, -limit - 1]);
+        }
         let mut w = BitWriter::new();
-        for v in values {
+        for &v in &values {
             write(&mut w, v);
         }
         let buf = w.finish();
         let mut r = BitReader::new(&buf);
-        for v in values {
+        for &v in &values {
             assert_eq!(read(&mut r).unwrap(), v);
         }
     }
