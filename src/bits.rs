@@ -56,7 +56,7 @@ impl BitWriter {
     /// that waste is what dominates small blocks.
     pub fn write_varint(&mut self, mut value: u64) {
         loop {
-            let group = (value & 0x7F) as u64;
+            let group = value & 0x7F;
             value >>= 7;
             if value == 0 {
                 self.write_bits(group, 8);
