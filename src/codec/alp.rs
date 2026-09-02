@@ -76,7 +76,8 @@ pub(crate) fn decode(body: &[u8]) -> Result<Vec<Point>> {
         );
     }
 
-    let values: Vec<f64> = fastalp::decompress(val_bytes).map_err(|_| Error::MalformedBlock)?;
+    let mut values = Vec::with_capacity(count);
+    fastalp::decompress_into(val_bytes, &mut values).map_err(|_| Error::MalformedBlock)?;
     if values.len() != count {
         return Err(Error::MalformedBlock);
     }
