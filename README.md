@@ -43,9 +43,11 @@ Chimp attacks the same problem without assuming anything about decimals: it keep
 rounds the leading-zero count into eight buckets and pays for an explicit trailing-zero count
 only when that earns its keep. Chimp128 goes further and XORs against the best of the last 128
 values rather than always the previous one. Elf splits the difference, zeroing the mantissa bits
-that carry no decimal information before handing the result to Chimp.
+that carry no decimal information before handing the result to Chimp. ALP (SIGMOD 2024)
+dynamically discovers the best decimal exponent and factor per vector, combining Frame-of-Reference
+bitpacking with a bit-exact patch dictionary.
 
-Since blocks carry a tag byte naming their codec, an encoder can try all five and keep the
+Since blocks carry a tag byte naming their codec, an encoder can try all six and keep the
 smallest. That is the `auto` row.
 
 ### Two details that mattered more than the algorithms

@@ -11,10 +11,11 @@ length because the point count tells it when to stop.
 | `0x02` | Chimp |
 | `0x03` | Chimp128 |
 | `0x04` | Elf |
+| `0x05` | ALP |
 
 The tag is what lets a stored block be decoded without recording which codec produced it. It is
 also what makes two things possible without any format of their own: the decimal codec emits a
-Gorilla block when scaling would lose precision, and `Auto` encodes with all four and keeps the
+Gorilla block when scaling would lose precision, and `Auto` encodes with all codecs and keeps the
 smallest, whichever that turns out to be.
 
 ## Shared: delta-of-delta
@@ -202,6 +203,23 @@ on the low 14 mantissa bits, which are exactly the bits erasing sets to zero, so
 value collides on key zero, the reference degenerates to the previous value, and the 7-bit index
 is paid for nothing. Layered on Chimp128 the combination is measurably worse than Chimp128
 alone.
+
+## ALP (`0x05`)
+
+```
+varint    timestamp payload byte length
+--- delta-of-delta timestamp stream ---
+--- fastalp bitpacked f64 values stream with exception patch dictionary ---
+```
+
+ALP (Adaptive Lossless Floating-Point Compression, SIGMOD 2024) dynamically searches the optimal
+decimal scaling exponent and factor pair per vector, scales floating-point numbers to integers,
+and applies Frame-of-Reference (FOR) bitpacking. Exceptions (outliers, infinities, NaNs, signed zeros)
+are stored in a bit-exact patch dictionary.
+
+The timestamp stream uses the shared delta-of-delta encoding, while float values are compressed
+via the standalone `fastalp` engine using register SIMD decode loops with zero heap allocation during
+vector decompression.
 
 ## Robustness
 
