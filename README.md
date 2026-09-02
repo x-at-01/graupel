@@ -19,9 +19,10 @@ On 467,550 real readings from three archives — weather stations, tide gauges a
 | Gorilla (VLDB 2015) | 5.92 | 2.7x |
 | Chimp (VLDB 2022) | 4.66 | 3.4x |
 | Chimp128 (VLDB 2022) | 2.70 | 5.9x |
+| ALP (SIGMOD 2024) | 2.63 | 6.1x |
 | Elf (VLDB 2023) | 2.05 | 7.8x |
 | Decimal scaling | 1.28 | 12.5x |
-| **Best-of-five per block** | **1.27** | **12.6x** |
+| **Best-of-six per block** | **1.25** | **12.8x** |
 
 The headline is not any single row. It is that **no codec wins everywhere**, and the gap
 between the best and worst choice for a given series is often larger than the gap between
@@ -69,26 +70,27 @@ values and improved **every codec here**, discharge under decimal scaling most o
 ## Results
 
 ```
-source     variable                 points   raw   gorilla   decimal     chimp  chimp128       elf      auto
-------------------------------------------------------------------------------------------------------------
-co-ops     water_level              29,760    16      7.81      1.20      6.76      4.38      2.38      1.20
-co-ops     water_level_sigma        29,760    16      6.83      1.18      6.17      1.80      1.91      1.18
-isd-lite   air_temperature          79,807    16      7.07      1.23      5.44      2.72      2.08      1.23
-isd-lite   dew_point                79,772    16      6.89      1.22      5.31      2.51      1.98      1.22
-isd-lite   sea_level_pressure       72,857    16      6.54      1.24      5.26      2.65      2.01      1.24
-isd-lite   wind_direction           69,384    16      2.05      1.46      2.13      3.01      2.13      1.46
-isd-lite   wind_speed               71,298    16      6.47      1.20      3.94      2.31      2.06      1.20
-usgs-nwis  discharge                17,452    16      2.42      2.19      2.13      3.00      2.12      1.87
-usgs-nwis  gage_height              17,460    16      5.46      1.02      5.07      2.34      1.69      1.02
+source     variable                 points   raw   gorilla   decimal     chimp  chimp128       elf       alp      auto
+----------------------------------------------------------------------------------------------------------------------
+co-ops     water_level              29,760    16      7.81      1.20      6.76      4.38      2.38      3.01      1.20
+co-ops     water_level_sigma        29,760    16      6.83      1.18      6.17      1.80      1.91      2.14      1.18
+isd-lite   air_temperature          79,807    16      7.07      1.23      5.44      2.72      2.08      3.13      1.23
+isd-lite   dew_point                79,772    16      6.89      1.22      5.31      2.51      1.98      2.97      1.22
+isd-lite   sea_level_pressure       72,857    16      6.54      1.24      5.26      2.65      2.01      3.31      1.24
+isd-lite   wind_direction           69,384    16      2.05      1.46      2.13      3.01      2.13      1.40      1.38
+isd-lite   wind_speed               71,298    16      6.47      1.20      3.94      2.31      2.06      2.33      1.20
+usgs-nwis  discharge                17,452    16      2.42      2.18      2.12      3.00      2.12      2.16      1.72
+usgs-nwis  gage_height              17,460    16      5.46      1.02      5.07      2.33      1.69      2.67      1.02
 
 codec        bytes/point    vs raw        encode        decode
 --------------------------------------------------------------
-gorilla            5.919      2.7x    47 Mpt/s     52 Mpt/s
-decimal            1.284     12.5x    53 Mpt/s     76 Mpt/s
-chimp              4.664      3.4x    37 Mpt/s     38 Mpt/s
-chimp128           2.698      5.9x    38 Mpt/s     41 Mpt/s
-elf                2.053      7.8x    16 Mpt/s     34 Mpt/s
-auto               1.272     12.6x     6 Mpt/s     77 Mpt/s
+gorilla            5.918      2.7x    89 Mpt/s     61 Mpt/s 
+decimal            1.283     12.5x    94 Mpt/s    100 Mpt/s 
+chimp              4.663      3.4x    58 Mpt/s     47 Mpt/s 
+chimp128           2.697      5.9x    61 Mpt/s     52 Mpt/s 
+alp                2.628      6.1x   122 Mpt/s    252 Mpt/s 
+elf                2.052      7.8x    24 Mpt/s     50 Mpt/s 
+auto               1.254     12.8x    10 Mpt/s    113 Mpt/s 
 ```
 
 Three things in that table are worth more than the averages.
