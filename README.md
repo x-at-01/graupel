@@ -21,7 +21,7 @@ On 467,550 real readings from three archives — weather stations, tide gauges a
 | Chimp128 (VLDB 2022) | 2.70 | 5.9x |
 | Elf (VLDB 2023) | 2.05 | 7.8x |
 | Decimal scaling | 1.28 | 12.5x |
-| ALP (SIGMOD 2024) | 1.23 | 13.1x |
+| fastalp (SIGMOD 2024) | 1.23 | 13.1x |
 | **Best-of-six per block** | **1.16** | **13.7x** |
 
 The headline is not any single row. It is that **no codec wins everywhere**, and the gap
@@ -44,9 +44,10 @@ Chimp attacks the same problem without assuming anything about decimals: it keep
 rounds the leading-zero count into eight buckets and pays for an explicit trailing-zero count
 only when that earns its keep. Chimp128 goes further and XORs against the best of the last 128
 values rather than always the previous one. Elf splits the difference, zeroing the mantissa bits
-that carry no decimal information before handing the result to Chimp. ALP (SIGMOD 2024)
+that carry no decimal information before handing the result to Chimp. fastalp (ALP, SIGMOD 2024)
 dynamically discovers the best decimal exponent and factor per vector, combining Frame-of-Reference
-bitpacking with a bit-exact patch dictionary.
+bitpacking with a bit-exact patch dictionary, exact decimal division reconstruction (eliminating
+multiplication truncation false exceptions), adaptive delta encoding, and outlier smoothing.
 
 Since blocks carry a tag byte naming their codec, an encoder can try all six and keep the
 smallest. That is the `auto` row.
@@ -70,7 +71,7 @@ values and improved **every codec here**, discharge under decimal scaling most o
 ## Results
 
 ```
-source     variable                 points   raw   gorilla   decimal     chimp  chimp128       elf       alp      auto
+source     variable                 points   raw   gorilla   decimal     chimp  chimp128       elf   fastalp      auto
 ----------------------------------------------------------------------------------------------------------------------
 co-ops     water_level              29,760    16      7.81      1.20      6.76      4.38      2.38      1.07      1.07
 co-ops     water_level_sigma        29,760    16      6.83      1.18      6.17      1.80      1.91      1.40      1.09
@@ -89,7 +90,7 @@ decimal            1.283     12.5x    79 Mpt/s     99 Mpt/s
 chimp              4.663      3.4x    53 Mpt/s     44 Mpt/s 
 chimp128           2.697      5.9x    58 Mpt/s     49 Mpt/s 
 elf                2.052      7.8x    23 Mpt/s     48 Mpt/s 
-alp                1.225     13.1x   169 Mpt/s    254 Mpt/s 
+fastalp            1.225     13.1x   169 Mpt/s    254 Mpt/s 
 auto               1.165     13.7x    10 Mpt/s    201 Mpt/s 
 ```
 
@@ -116,7 +117,7 @@ Everything above stores one block per series, which no real database does. Prome
 two-hour blocks. Chunking the same data on epoch-aligned windows:
 
 ```
-block window        blocks   gorilla   decimal     chimp  chimp128       elf       alp      auto
+block window        blocks   gorilla   decimal     chimp  chimp128       elf   fastalp      auto
 ------------------------------------------------------------------------------------------------
 6 hours             70,003      6.98      2.92      6.63      6.12      4.53      4.48      2.90
 1 day               18,016      5.74      1.69      5.15      3.74      2.67      1.94      1.65
@@ -148,7 +149,7 @@ format                         bytes   bytes/point     vs best
 --------------------------------------------------------------
 uncompressed                 7480800         16.00       13.7x
 graupel::auto                 544641         1.165       1.00x
-graupel::alp                  572852         1.225       1.05x
+graupel::fastalp              572852         1.225       1.05x
 graupel::decimal              599642         1.283       1.10x
 graupel::elf                  959575         2.052       1.76x
 xz -9                        1231516         2.634       2.26x

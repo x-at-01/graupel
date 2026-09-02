@@ -6,21 +6,21 @@ use crate::bits::{unzigzag, zigzag, BitReader, BitWriter};
 use crate::error::{Error, Result};
 use crate::Point;
 
-mod alp;
 mod auto;
 mod chimp;
 mod chimp128;
 mod decimal;
 mod dod;
 mod elf;
+mod fastalp;
 mod gorilla;
 
-pub use alp::Alp;
 pub use auto::Auto;
 pub use chimp::Chimp;
 pub use chimp128::Chimp128;
 pub use decimal::Decimal;
 pub use elf::Elf;
+pub use fastalp::{Alp, FastAlp};
 pub use gorilla::Gorilla;
 
 pub const TAG_GORILLA: u8 = 0;
@@ -28,7 +28,8 @@ pub const TAG_DECIMAL: u8 = 1;
 pub const TAG_CHIMP: u8 = 2;
 pub const TAG_CHIMP128: u8 = 3;
 pub const TAG_ELF: u8 = 4;
-pub const TAG_ALP: u8 = 5;
+pub const TAG_FASTALP: u8 = 5;
+pub const TAG_ALP: u8 = TAG_FASTALP;
 
 pub trait Codec {
     fn name(&self) -> &'static str;
@@ -46,7 +47,7 @@ pub fn decode(block: &[u8]) -> Result<Vec<Point>> {
         TAG_CHIMP => chimp::decode(body),
         TAG_CHIMP128 => chimp128::decode(body),
         TAG_ELF => elf::decode(body),
-        TAG_ALP => alp::decode(body),
+        TAG_FASTALP => fastalp::decode(body),
         other => Err(Error::UnknownEncoding(other)),
     }
 }
@@ -58,7 +59,7 @@ pub fn all() -> Vec<Box<dyn Codec>> {
         Box::new(Chimp),
         Box::new(Chimp128),
         Box::new(Elf),
-        Box::new(Alp),
+        Box::new(FastAlp),
         Box::new(Auto),
     ]
 }
