@@ -51,13 +51,11 @@ impl Codec for FastAlp {
         let ts_bytes = w.finish();
 
         let values: Vec<f64> = points.iter().map(|p| p.value).collect();
-        let val_bytes = fastalp::compress(&values);
-
-        let mut block = Vec::with_capacity(1 + 5 + ts_bytes.len() + val_bytes.len());
+        let mut block = Vec::with_capacity(1 + 5 + ts_bytes.len() + values.len() * 4);
         block.push(TAG_FASTALP);
         write_varint_bytes(ts_bytes.len() as u64, &mut block);
         block.extend_from_slice(&ts_bytes);
-        block.extend_from_slice(&val_bytes);
+        fastalp::compress_into(&values, &mut block);
 
         Ok(block)
     }

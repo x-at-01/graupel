@@ -13,7 +13,7 @@ categories = ["compression", "database-implementations", "science"]
 exclude = ["data/"]
 
 [dependencies]
-fastalp = "0.1.24"
+fastalp = "0.1.29"
 
 # Only the external-comparison example needs these; the library itself has no dependencies.
 [dev-dependencies]
