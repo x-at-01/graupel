@@ -20,9 +20,9 @@ On 467,550 real readings from three archives — weather stations, tide gauges a
 | Chimp (VLDB 2022) | 4.66 | 3.4x |
 | Chimp128 (VLDB 2022) | 2.70 | 5.9x |
 | Elf (VLDB 2023) | 2.05 | 7.8x |
-| fastalp (SIGMOD 2024) | 1.58 | 10.1x |
 | Decimal scaling | 1.28 | 12.5x |
-| **Best-of-six per block** | **1.23** | **13.0x** |
+| fastalp (SIGMOD 2024) | 1.06 | 15.1x |
+| **Best-of-six per block** | **1.05** | **15.2x** |
 
 The headline is not any single row. It is that **no codec wins everywhere**, and the gap
 between the best and worst choice for a given series is often larger than the gap between
@@ -73,25 +73,25 @@ values and improved **every codec here**, discharge under decimal scaling most o
 ```
 source     variable                 points   raw   gorilla   decimal     chimp  chimp128       elf   fastalp      auto
 ----------------------------------------------------------------------------------------------------------------------
-co-ops     water_level              29,760    16      7.81      1.20      6.76      4.38      2.38      1.19      1.14
-co-ops     water_level_sigma        29,760    16      6.83      1.18      6.17      1.80      1.91      2.88      1.11
-isd-lite   air_temperature          79,807    16      7.07      1.23      5.44      2.72      2.08      1.29      1.22
-isd-lite   dew_point                79,772    16      6.89      1.22      5.31      2.51      1.98      1.31      1.22
-isd-lite   sea_level_pressure       72,857    16      6.54      1.24      5.26      2.65      2.01      1.37      1.24
-isd-lite   wind_direction           69,384    16      2.05      1.46      2.13      3.01      2.13      1.40      1.38
-isd-lite   wind_speed               71,298    16      6.47      1.20      3.94      2.31      2.06      2.00      1.15
-usgs-nwis  discharge                17,452    16      2.42      2.18      2.12      3.00      2.12      1.66      1.47
-usgs-nwis  gage_height              17,460    16      5.46      1.02      5.07      2.33      1.69      2.51      1.02
+co-ops     water_level              29,760    16      7.81      1.20      6.76      4.38      2.38      1.07      1.07
+co-ops     water_level_sigma        29,760    16      6.83      1.18      6.17      1.80      1.91      0.99      0.99
+isd-lite   air_temperature          79,807    16      7.07      1.23      5.44      2.72      2.08      1.15      1.15
+isd-lite   dew_point                79,772    16      6.89      1.22      5.31      2.51      1.98      1.14      1.11
+isd-lite   sea_level_pressure       72,857    16      6.54      1.24      5.26      2.65      2.01      1.08      1.08
+isd-lite   wind_direction           69,384    16      2.05      1.46      2.13      3.01      2.13      1.05      1.05
+isd-lite   wind_speed               71,298    16      6.47      1.20      3.94      2.31      2.06      0.86      0.86
+usgs-nwis  discharge                17,452    16      2.42      2.18      2.12      3.00      2.12      1.46      1.41
+usgs-nwis  gage_height              17,460    16      5.46      1.02      5.07      2.33      1.69      0.82      0.82
 
 codec        bytes/point    vs raw        encode        decode
 --------------------------------------------------------------
-gorilla            5.918      2.7x    78 Mpt/s     58 Mpt/s 
-decimal            1.283     12.5x    93 Mpt/s    102 Mpt/s 
-chimp              4.663      3.4x    56 Mpt/s     45 Mpt/s 
-chimp128           2.697      5.9x    58 Mpt/s     50 Mpt/s 
-elf                2.052      7.8x    23 Mpt/s     47 Mpt/s 
-fastalp            1.583     10.1x   250 Mpt/s    295 Mpt/s 
-auto               1.226     13.0x    10 Mpt/s    145 Mpt/s 
+gorilla            5.918      2.7x    78 Mpt/s     52 Mpt/s 
+decimal            1.283     12.5x    81 Mpt/s     93 Mpt/s 
+chimp              4.663      3.4x    48 Mpt/s     42 Mpt/s 
+chimp128           2.697      5.9x    53 Mpt/s     45 Mpt/s 
+elf                2.052      7.8x    21 Mpt/s     43 Mpt/s 
+fastalp            1.061     15.1x   122 Mpt/s    275 Mpt/s 
+auto               1.055     15.2x     8 Mpt/s    234 Mpt/s 
 ```
 
 Three things in that table are worth more than the averages.
@@ -119,12 +119,12 @@ two-hour blocks. Chunking the same data on epoch-aligned windows:
 ```
 block window        blocks   gorilla   decimal     chimp  chimp128       elf   fastalp      auto
 ------------------------------------------------------------------------------------------------
-6 hours             70,003      6.98      2.92      6.63      6.12      4.53      4.53      2.90
-1 day               18,016      5.74      1.69      5.15      3.74      2.67      1.96      1.66
-1 week               2,624      5.59      1.33      4.74      2.86      2.15      1.39      1.26
-1 month                656      5.69      1.28      4.68      2.73      2.07      1.43      1.21
-1 year                 112      5.91      1.28      4.66      2.70      2.05      1.58      1.23
-whole series            64      5.92      1.28      4.66      2.70      2.05      1.58      1.23
+6 hours             70,003      6.98      2.92      6.63      6.12      4.53      4.50      2.90
+1 day               18,016      5.74      1.69      5.15      3.74      2.67      1.91      1.65
+1 week               2,624      5.59      1.33      4.74      2.86      2.15      1.20      1.18
+1 month                656      5.69      1.28      4.68      2.73      2.07      1.11      1.10
+1 year                 112      5.91      1.28      4.66      2.70      2.05      1.06      1.06
+whole series            64      5.92      1.28      4.66      2.70      2.05      1.06      1.05
 ```
 
 The header still dominates below about a day's worth of points, so block size remains a bigger
@@ -147,20 +147,20 @@ most-downloaded Rust Gorilla) and against general-purpose compressors run over t
 ```
 format                         bytes   bytes/point     vs best
 --------------------------------------------------------------
-uncompressed                 7480800         16.00       13.0x
-graupel::auto                 573307         1.226       1.00x
-graupel::decimal              599642         1.283       1.05x
-graupel::fastalp              739974         1.583       1.29x
-graupel::elf                  959575         2.052       1.67x
-xz -9                        1231516         2.634       2.15x
-graupel::chimp128            1260925         2.697       2.20x
-JSON + zstd -19              1335206         2.856       2.33x
-zstd -19                     1826879         3.907       3.19x
-JSON + gzip -9               1951620         4.174       3.40x
-gzip -9                      2004038         4.286       3.50x
-graupel::chimp               2180113         4.663       3.80x
-graupel::gorilla             2767149         5.918       4.83x
-tsz (Gorilla crate)          2788513         5.964       4.86x
+uncompressed                 7480800         16.00       15.2x
+graupel::auto                 493234         1.055       1.00x
+graupel::fastalp              496234         1.061       1.01x
+graupel::decimal              599642         1.283       1.22x
+graupel::elf                  959575         2.052       1.95x
+xz -9                        1231516         2.634       2.50x
+graupel::chimp128            1260925         2.697       2.56x
+JSON + zstd -19              1335206         2.856       2.71x
+zstd -19                     1826879         3.907       3.70x
+JSON + gzip -9               1951620         4.174       3.96x
+gzip -9                      2004038         4.286       4.06x
+graupel::chimp               2180113         4.663       4.42x
+graupel::gorilla             2767149         5.918       5.61x
+tsz (Gorilla crate)          2788513         5.964       5.65x
 ```
 
 The two rows that matter most are the last two. This crate's Gorilla and the reference crate
